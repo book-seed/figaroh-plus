@@ -16,3 +16,6 @@ __pycache__/
 
 # Examples and models moved to separate repository
 # See: https://github.com/thanhndv212/figaroh-examples
+
+# pixi environment directory
+.pixi/
