@@ -155,24 +155,24 @@ git commit -m "feat(pixi): add pixi.toml with feature-based dependency managemen
 - Consumes: Task 1 的 `pixi.toml`
 - Produces: `pixi.lock`，供后续任务验证依赖一致性
 
-- [ ] **Step 1: 运行 pixi install 生成 lock 文件**
+- [x] **Step 1: 运行 pixi install 生成 lock 文件**
 
 Run: `pixi install`
 Expected: pixi 解析依赖并生成 `pixi.lock`，输出类似于 "Created pixi.lock" 或 "Lock file generated"。首次安装可能需要 5-10 分钟（在 aarch64 上），因 SAT solver 需解析大量依赖。
 
 如果遇到 cyipopt 或 numpy/scipy 版本冲突，观察 solver 输出中冲突信息。手动干预方式：在 `[feature.core.dependencies]` 中为冲突包显式指定兼容版本。
 
-- [ ] **Step 2: 验证 pixi.lock 包含三平台解析条目**
+- [x] **Step 2: 验证 pixi.lock 包含三平台解析条目**
 
 Run: `grep -E "linux-aarch64|linux-64|osx-arm64" pixi.lock | head -5`
 Expected: 输出中至少出现 `linux-aarch64`、`linux-64`、`osx-arm64` 三个平台标识之一，确认 lock 包含多平台解析。
 
-- [ ] **Step 3: 验证 default 环境可用**
+- [x] **Step 3: 验证 default 环境可用**
 
 Run: `pixi shell`（或 `pixi run python -c "import figaroh; print(figaroh.__version__)"`）
 Expected: 成功导入 figaroh，打印版本号 `0.4.3`。如果 `pixi shell` 需要交互式终端，使用 `pixi run` 替代。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add pixi.lock

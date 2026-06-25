@@ -15,8 +15,8 @@
 
 ## 3. pixi.lock 生成
 
-- [ ] 3.1 运行 `pixi install` 在 linux-aarch64（当前平台）生成 lock
-- [ ] 3.2 验证 `pixi.lock` 包含三平台解析条目
+- [x] 3.1 运行 `pixi install` 在 linux-aarch64（当前平台）生成 lock
+- [x] 3.2 验证 `pixi.lock` 包含三平台解析条目
 
 ## 4. pyproject.toml 精简
 
