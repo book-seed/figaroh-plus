@@ -334,11 +334,11 @@ git commit -m "refactor(pyproject): remove dependency declarations, now managed 
 **Interfaces:**
 - Produces: 无依赖残留，`environment.yml` 已删除，`.gitignore` 排除 `.pixi/`
 
-- [ ] **Step 1: 删除 environment.yml**
+- [x] **Step 1: 删除 environment.yml**
 
 Run: `git rm environment.yml`
 
-- [ ] **Step 2: 更新 .gitignore——添加 `.pixi/` 目录排除**
+- [x] **Step 2: 更新 .gitignore——添加 `.pixi/` 目录排除**
 
 在 `.gitignore` 末尾添加一行：
 ```

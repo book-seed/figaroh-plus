@@ -26,8 +26,8 @@
 
 ## 5. 旧文件清理
 
-- [ ] 5.1 删除 `environment.yml`
-- [ ] 5.2 更新 `.gitignore`，添加 `.pixi/` 目录排除
+- [x] 5.1 删除 `environment.yml`
+- [x] 5.2 更新 `.gitignore`，添加 `.pixi/` 目录排除
 
 ## 6. CI 工作流更新
 
