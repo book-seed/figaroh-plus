@@ -5,6 +5,7 @@ FIGAROH is a Python toolbox providing efficient and highly flexible frameworks f
 
 **📦 Available on PyPI:** `pip install figaroh`  
 **📖 Version:** 0.4.3
+[![pixi](https://img.shields.io/badge/managed%20with-pixi-00B388)](https://prefix.dev)
 
 > Note: This repo is a fork from [gitlab repo](https://gitlab.laas.fr/gepetto/figaroh) of which the author is no longer a contributor.
 
@@ -22,22 +23,45 @@ pip install figaroh
 
 ### Development Installation
 
-For development or local installation from source, choose one of these methods:
+For development or local installation from source:
 
-**Method 1: Direct pip installation (Simple)**
+**Method 1: pixi (Recommended)**
 ```bash
 git clone https://github.com/thanhndv212/figaroh-plus.git
-cd figaroh
-pip install -e .
+cd figaroh-plus
+# Install all dependencies and activate default environment
+pixi install
+# Activate the development environment
+pixi shell
 ```
 
-**Method 2: Conda environment (Recommended for the use of cyipopt)**
+**Method 2: pip (Simple)**
 ```bash
 git clone https://github.com/thanhndv212/figaroh-plus.git
-cd figaroh
-# Create conda environment with optimization libraries
-conda env create -f environment.yml
-conda activate figaroh-dev
+cd figaroh-plus
+pip install -e .
+```
+Note: Method 2 may miss conda-managed dependencies like cyipopt.
+
+### pixi Environments
+
+pixi provides multiple pre-configured environments:
+
+| Environment | Features | Use Case |
+|-------------|----------|----------|
+| `default` | core + dev + docs | Daily development |
+| `docs` | core + docs | Documentation building |
+| `test` | core + dev | Running tests |
+| `examples` | core + examples | Jupyter notebooks |
+
+### pixi Tasks
+
+```bash
+pixi run test     # Run pytest
+pixi run lint     # Run flake8 + mypy
+pixi run format   # Run black + isort
+pixi run build    # Build wheel
+pixi run docs     # Build documentation
 ```
 
 ### Examples Repository
