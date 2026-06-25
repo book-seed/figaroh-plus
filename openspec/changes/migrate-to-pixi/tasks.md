@@ -31,8 +31,8 @@
 
 ## 6. CI 工作流更新
 
-- [ ] 6.1 更新 `.github/workflows/docs.yml`，使用 pixi 安装依赖和构建文档
-- [ ] 6.2 验证更新后的 workflow 语法正确（至少本地检查）
+- [x] 6.1 更新 `.github/workflows/docs.yml`，使用 pixi 安装依赖和构建文档
+- [x] 6.2 验证更新后的 workflow 语法正确（至少本地检查）
 
 ## 7. 验证
 

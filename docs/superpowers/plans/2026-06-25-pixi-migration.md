@@ -392,7 +392,7 @@ git commit -m "chore: remove environment.yml and add .pixi/ to .gitignore
 - Consumes: 现有 CI workflow（base-ref 状态）
 - Produces: 使用 pixi action 的 CI workflow
 
-- [ ] **Step 1: 替换 docs.yml 中的依赖安装步骤**
+- [x] **Step 1: 替换 docs.yml 中的依赖安装步骤**
 
 将 `.github/workflows/docs.yml` 替换为以下内容：
 
@@ -441,7 +441,7 @@ jobs:
 
 注意：`pixi run -e docs docs` 中第一个 `docs` 为 task 名称，`-e docs` 指定 docs 环境。如果 pixi 不支持 `-e` 参数（取决于版本），改用 `pixi run --environment docs docs`。验证本地 pixi 版本支持的语法。
 
-- [ ] **Step 2: 验证 workflow YAML 语法**
+- [x] **Step 2: 验证 workflow YAML 语法**
 
 Run: `python -c "import yaml; yaml.safe_load(open('.github/workflows/docs.yml')); print('YAML valid')"`
 Expected: 输出 "YAML valid"
@@ -449,7 +449,7 @@ Expected: 输出 "YAML valid"
 如果没有安装 pyyaml，使用系统 python3 运行：
 Run: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/docs.yml')); print('YAML valid')" 2>/dev/null || echo "yaml not available, check manually"`
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add .github/workflows/docs.yml
