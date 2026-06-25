@@ -42,3 +42,9 @@
 - [x] 7.4 运行 `pixi run docs` 确认文档可构建
 - [x] 7.5 运行 `pixi run build` 确认 wheel 可构建
 - [x] 7.6 更新 `README.md` 开发环境说明，添加 pixi quickstart
+
+<!-- review: standard mode, final review APPROVED (3 Minor accepted):
+1. osx-64 excluded: intentional — Tier 2 only osx-arm64 per design; Intel Mac not primary target
+2. pre-commit removed from pixi.toml: intentional — pre-commit managed via .pre-commit-config.yaml, installed separately
+3. pip install -e . missing deps: accepted — README already warns Method 2 skips conda deps; pixi is primary path
+-->
