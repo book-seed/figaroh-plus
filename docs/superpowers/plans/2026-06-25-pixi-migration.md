@@ -550,12 +550,12 @@ git commit -m "docs(readme): add pixi quickstart and environment documentation
 - Consumes: 全部 Task 1-6 的输出
 - Produces: 验证通过的完整 pixi 工作流
 
-- [ ] **Step 1: 运行 pixi validate**
+- [x] **Step 1: 运行 pixi validate**
 
 Run: `pixi validate`
 Expected: 无错误输出，确认 pixi.toml 和 lock 文件一致
 
-- [ ] **Step 2: 验证所有环境可安装**
+- [x] **Step 2: 验证所有环境可安装**
 
 Run:
 ```bash
@@ -565,34 +565,34 @@ pixi install -e test          # test 环境
 ```
 Expected: 每个环境都能成功安装。注意：lock 已生成的情况下，后续 install 应快很多（秒级）。
 
-- [ ] **Step 3: 运行 `pixi run shell`——验证 figaroh 可导入**
+- [x] **Step 3: 运行 `pixi run shell`——验证 figaroh 可导入**
 
 Run: `pixi run python -c "import figaroh; print(figaroh.__version__)"`
 Expected: 输出 `0.4.3`
 
-- [ ] **Step 4: 运行 `pixi run test`——验证测试通过**
+- [x] **Step 4: 运行 `pixi run test`——验证测试通过**
 
 Run: `pixi run test`
 Expected: pytest 运行并通过所有测试。注意：如部分测试需要特殊硬件或长时间运行，可确认测试框架启动正常即可。
 
-- [ ] **Step 5: 运行 `pixi run lint`——验证代码检查**
+- [x] **Step 5: 运行 `pixi run lint`——验证代码检查**
 
 Run: `pixi run lint`
 Expected: flake8 和 mypy 无报错。如果 mypy 配置较严格有类型错误，先确认这些错误是否在迁移前就存在（可通过 `git stash` 切回 base-ref 对比）。
 
-- [ ] **Step 6: 运行 `pixi run build`——验证 wheel 可构建**
+- [x] **Step 6: 运行 `pixi run build`——验证 wheel 可构建**
 
 Run: `pixi run build`
 Expected: 在 `dist/` 目录下生成 `.whl` 和 `.tar.gz` 文件。验证产物：
 Run: `ls dist/`
 Expected: 包含 `figaroh-0.4.3-*.whl` 和 `figaroh-0.4.3.tar.gz`
 
-- [ ] **Step 7: 运行 `pixi run docs`——验证文档可构建**
+- [x] **Step 7: 运行 `pixi run docs`——验证文档可构建**
 
 Run: `pixi run docs`
 Expected: docs 构建成功，`docs/build/html/` 目录中包含 `index.html`。
 
-- [ ] **Step 8: 清理 build 产物**
+- [x] **Step 8: 清理 build 产物**
 
 Run: `pixi run clean`
 Expected: `dist/`、`build/`、`*.egg-info` 被删除。

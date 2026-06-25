@@ -36,9 +36,9 @@
 
 ## 7. 验证
 
-- [ ] 7.1 运行 `pixi run shell` 确认开发环境可用，`import figaroh` 成功
-- [ ] 7.2 运行 `pixi run test` 确认 pytest 通过
-- [ ] 7.3 运行 `pixi run lint` 确认代码检查正常
-- [ ] 7.4 运行 `pixi run docs` 确认文档可构建
-- [ ] 7.5 运行 `pixi run build` 确认 wheel 可构建
-- [ ] 7.6 更新 `README.md` 开发环境说明，添加 pixi quickstart
+- [x] 7.1 运行 `pixi run shell` 确认开发环境可用，`import figaroh` 成功
+- [x] 7.2 运行 `pixi run test` 确认 pytest 通过
+- [x] 7.3 运行 `pixi run lint` 确认代码检查正常
+- [x] 7.4 运行 `pixi run docs` 确认文档可构建
+- [x] 7.5 运行 `pixi run build` 确认 wheel 可构建
+- [x] 7.6 更新 `README.md` 开发环境说明，添加 pixi quickstart
