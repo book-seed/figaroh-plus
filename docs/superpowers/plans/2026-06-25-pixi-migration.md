@@ -371,7 +371,7 @@ __pycache__/
 .pixi/
 ```
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add environment.yml .gitignore
@@ -471,7 +471,7 @@ git commit -m "ci(docs): migrate to pixi-based setup in CI workflow
 **Interfaces:**
 - Produces: README 中包含 pixi quickstart，替换旧 conda 安装指南
 
-- [ ] **Step 1: 替换 Installation 节中的 conda 方法**
+- [x] **Step 1: 替换 Installation 节中的 conda 方法**
 
 将现有 "Development Installation" 节（第23-41行）替换为：
 
@@ -528,7 +528,7 @@ pixi run docs     # Build documentation
 ```
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 git add README.md

@@ -1,7 +1,7 @@
 ## 1. 前期调研
 
-- [ ] 1.1 验证所有依赖在 conda-forge 三平台（linux-aarch64、linux-64、osx-arm64）的可用性，记录不可用包及 fallback 方案
-- [ ] 1.2 确认 `pin` 包在 conda-forge/PyPI 中的实际名称，避免名称冲突
+- [x] 1.1 验证所有依赖在 conda-forge 三平台（linux-aarch64、linux-64、osx-arm64）的可用性，记录不可用包及 fallback 方案
+- [x] 1.2 确认 `pin` 包在 conda-forge/PyPI 中的实际名称，避免名称冲突
 
 ## 2. pixi.toml 配置
 
