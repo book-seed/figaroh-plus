@@ -1,0 +1,70 @@
+[project]
+name = "figaroh"
+version = "0.4.3"
+platforms = ["linux-aarch64", "linux-64", "osx-arm64"]
+channels = ["conda-forge"]
+
+[tasks]
+
+[tasks.shell]
+cmd = "bash"
+
+[tasks.test]
+cmd = "pytest tests/"
+
+[tasks.lint]
+cmd = "flake8 src/ && mypy src/"
+
+[tasks.format]
+cmd = "black src/ tests/ && isort src/ tests/"
+
+[tasks.clean]
+cmd = "rm -rf dist/ build/ *.egg-info"
+
+[tasks.build]
+cmd = "python -m build"
+
+[tasks.docs]
+cmd = "cd docs && make html"
+
+[feature.core.dependencies]
+python = "3.12.*"
+cyipopt = { version = "*", channel = "conda-forge" }
+
+[feature.core.pypi-dependencies]
+numpy = "*"
+scipy = "*"
+pin = "*"
+matplotlib = "*"
+pyyaml = "*"
+meshcat = "*"
+pandas = "*"
+rospkg = "*"
+picos = "*"
+numdifftools = "*"
+ndcurves = "*"
+figaroh = { path = ".", editable = true }
+
+[feature.dev.pypi-dependencies]
+pytest = ">=6.0"
+pytest-cov = "*"
+black = "*"
+isort = "*"
+flake8 = "*"
+mypy = "*"
+
+[feature.docs.pypi-dependencies]
+sphinx = "*"
+sphinx-rtd-theme = "*"
+sphinx-autodoc-typehints = "*"
+
+[feature.examples.pypi-dependencies]
+jupyter = "*"
+notebook = "*"
+ipywidgets = "*"
+
+[environments]
+default = { features = ["core", "dev", "docs"], solve-group = "default" }
+docs = { features = ["core", "docs"], solve-group = "default" }
+test = { features = ["core", "dev"], solve-group = "default" }
+examples = { features = ["core", "examples"], solve-group = "default" }
