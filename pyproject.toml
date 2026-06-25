@@ -40,40 +40,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = [
-    "numpy",
-    "scipy",
-    "pin",
-    "matplotlib",
-    "pyyaml",
-    "meshcat",
-    "pandas",
-    "rospkg",
-    "picos",
-    "numdifftools",
-    "ndcurves",
-]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=6.0",
-    "pytest-cov",
-    "black",
-    "isort",
-    "flake8",
-    "mypy",
-    "pre-commit",
-]
-docs = [
-    "sphinx",
-    "sphinx-rtd-theme",
-    "sphinx-autodoc-typehints",
-]
-examples = [
-    "jupyter",
-    "notebook",
-    "ipywidgets",
-]
+# Dependencies are managed by pixi.toml — run `pixi install` to set up the environment
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/figaroh"]
