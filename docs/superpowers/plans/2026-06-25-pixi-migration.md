@@ -194,7 +194,7 @@ git commit -m "feat(pixi): generate pixi.lock with multi-platform dependency res
 - Consumes: `pyproject.toml` 当前内容（已在 base-ref 中有完整依赖声明）
 - Produces: 精简后的 `pyproject.toml`，供 Task 7 验证 `pixi run build` 可构建 wheel
 
-- [ ] **Step 1: 删除 `[project.dependencies]` 节（第43-55行）**
+- [x] **Step 1: 删除 `[project.dependencies]` 节（第43-55行）**
 
 删除如下内容：
 ```toml
@@ -213,7 +213,7 @@ dependencies = [
 ]
 ```
 
-- [ ] **Step 2: 删除 `[project.optional-dependencies]` 节（第57-76行）**
+- [x] **Step 2: 删除 `[project.optional-dependencies]` 节（第57-76行）**
 
 删除如下内容：
 ```toml
@@ -239,7 +239,7 @@ examples = [
 ]
 ```
 
-- [ ] **Step 3: 在 `[project]` 元数据后添加注释**
+- [x] **Step 3: 在 `[project]` 元数据后添加注释**
 
 在 `classifiers` 列表之后（原本 `dependencies` 所在位置之前）添加：
 ```toml
@@ -312,7 +312,7 @@ Issues = "https://github.com/thanhndv212/figaroh-plus/issues"
 Examples = "https://github.com/thanhndv212/figaroh-examples"
 ```
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add pyproject.toml

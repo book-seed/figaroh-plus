@@ -20,9 +20,9 @@
 
 ## 4. pyproject.toml 精简
 
-- [ ] 4.1 删除 `[project.dependencies]` 节
-- [ ] 4.2 删除 `[project.optional-dependencies]` 节（dev、docs、examples）
-- [ ] 4.3 保留 `[build-system]` 和 `[project]` 元数据（name、version、authors 等），添加注释说明依赖由 pixi.toml 管理
+- [x] 4.1 删除 `[project.dependencies]` 节
+- [x] 4.2 删除 `[project.optional-dependencies]` 节（dev、docs、examples）
+- [x] 4.3 保留 `[build-system]` 和 `[project]` 元数据（name、version、authors 等），添加注释说明依赖由 pixi.toml 管理
 
 ## 5. 旧文件清理
 
