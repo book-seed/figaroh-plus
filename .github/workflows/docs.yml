@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [ main ]
 
-# These permissions are needed for deployment
 permissions:
   contents: write
   pages: write
@@ -15,38 +14,21 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    # Remove environment specification to avoid protection rules
     steps:
-      - name: Checkout 
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0
         with:
-          python-version: '3.x'
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config coinor-libipopt-dev libblas-dev liblapack-dev
-          python -m pip install --upgrade pip
-          pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints
-          # Install only essential dependencies for docs build
-          pip install numpy scipy matplotlib pyyaml
-          # Try to install the package, but don't fail if it errors
-          pip install -e . || echo "Package install failed, continuing with docs build"
+          pixi-version: latest
+          cache: true
+          environments: docs
 
       - name: Build Documentation
         run: |
-          cd docs
-          # Ensure build directory exists
-          mkdir -p build/html
-          # Build with warnings treated as non-fatal
-          make html || (echo "Build had warnings but continuing..." && ls -la build/html/)
-          # Create .nojekyll file for GitHub Pages
-          touch build/html/.nojekyll
-          # Verify build output
-          ls -la build/html/ || echo "Build output check"
+          pixi run -e docs docs
+          cd docs/build/html && touch .nojekyll
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
