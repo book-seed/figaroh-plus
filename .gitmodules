@@ -1,0 +1,3 @@
+[submodule "figaroh-examples"]
+	path = figaroh-examples
+	url = https://github.com/book-seed/figaroh-examples.git
