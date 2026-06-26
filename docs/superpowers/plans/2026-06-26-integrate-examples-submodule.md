@@ -2,6 +2,7 @@
 change: integrate-examples-submodule
 design-doc: docs/superpowers/specs/2026-06-26-integrate-examples-submodule-design.md
 base-ref: 34e2a56e0abd44a777287803d5ec40f6f939a27b
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 # Integrate figaroh-examples as Git Submodule — Implementation Plan
@@ -25,6 +26,7 @@ base-ref: 34e2a56e0abd44a777287803d5ec40f6f939a27b
 - `cvxpy` 从 UR10 README 中移除（零代码库导入，属于文档漂移）
 - `viser` 添加到 examples feature 的 pypi-dependencies 中
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 ## File Structure
@@ -45,6 +47,7 @@ base-ref: 34e2a56e0abd44a777287803d5ec40f6f939a27b
 | `figaroh-examples/examples/talos/README.md` | **检查/修改** | 如有 pip install 段则替换 |
 | `figaroh-examples/examples/templates/README.md` | **检查** | 模板文档，检查是否需要更新 |
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 ### Task 1: Submodule 设置（本地替换 + git submodule add）
@@ -144,6 +147,7 @@ git commit -m "feat: add figaroh-examples as git submodule
 ```
 (注意：git push 在 Task 6 统一执行)
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 ### Task 2: figaroh-examples 仓库清理——删除冗余配置文件 + 更新 README
@@ -271,6 +275,7 @@ git commit -m "chore: clean up obsolete config files and update READMEs for pixi
 
 注意：此时不要 push，等 Task 6 统一推送。
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 ### Task 3: figaroh-plus 配置更新——pyproject.toml + .gitignore + README
@@ -396,6 +401,7 @@ git commit -m "feat: update project config for examples submodule integration
 - Replace pip-based examples install with pixi usage"
 ```
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 ### Task 4: 依赖验证与 pixi.lock 重建
@@ -481,6 +487,7 @@ git commit -m "chore: regenerate pixi.lock with viser dependency
 - Lock includes viser resolution for linux-aarch64, linux-64, osx-arm64"
 ```
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 ### Task 5: UR10 例程验收 + 完整测试
@@ -531,6 +538,7 @@ Expected: 输出以空格开头（表示 submodule 指针与当前 checkout 一�
  3983de5... figaroh-examples (heads/main)
 ```
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 ### Task 6: 推送与提交——子模块 + 父仓库
@@ -603,6 +611,7 @@ git commit -m "feat: integrate figaroh-examples as git submodule
 - Clean up .gitignore and project URLs for submodule layout"
 ```
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 ## Self-Review
@@ -647,6 +656,7 @@ Task 1 (Submodule Setup)
 
 Task 2 和 Task 3 可以并行执行（分别在 submodule 和父仓库中独立操作），但建议按编号顺序执行以避免冲突。
 
+archived-with: 2026-06-26-integrate-examples-submodule
 ---
 
 Plan complete and saved to `docs/superpowers/plans/2026-06-26-integrate-examples-submodule.md`. Two execution options:

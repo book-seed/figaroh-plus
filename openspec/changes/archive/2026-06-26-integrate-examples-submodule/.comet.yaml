@@ -17,7 +17,7 @@ verification_report: docs/superpowers/reports/2026-06-26-integrate-examples-subm
 branch_status: handled
 created_at: 2026-06-26
 verified_at: 2026-06-26
-archived: false
+archived: true
 handoff_context: openspec/changes/integrate-examples-submodule/.comet/handoff/design-context.json
 handoff_hash: a177330d90246d52320e66471b7053bfb51ed7c882d5ca15dc91402fe93b5229
 build_command: pixi run build

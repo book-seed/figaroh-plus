@@ -2,6 +2,8 @@
 comet_change: integrate-examples-submodule
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-26-integrate-examples-submodule
+status: final
 ---
 
 # Technical Design: Integrate figaroh-examples as Git Submodule
