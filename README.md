@@ -53,7 +53,7 @@ git submodule update --init --recursive
 Run examples with pixi:
 
 ```bash
-pixi run -e examples python examples/ur10/calibration.py
+cd figaroh-examples/examples/ur10 && pixi run -e examples python calibration.py
 ```
 
 ---
