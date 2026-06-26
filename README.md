@@ -18,7 +18,7 @@ FIGAROH is a Python toolbox providing efficient and highly flexible frameworks f
 
 **pixi (Recommended)**
 ```bash
-git clone https://github.com/thanhndv212/figaroh-plus.git
+git clone --recurse-submodules https://github.com/book-seed/figaroh-plus.git
 cd figaroh-plus
 # Install all dependencies and activate default environment
 pixi install
@@ -49,9 +49,18 @@ pixi run docs     # Build documentation
 ```
 
 ### Examples Repository
+
+The figaroh-examples repository is included as a git submodule. It is automatically cloned
+when you use `git clone --recurse-submodules`. If you already cloned without the flag:
+
 ```bash
-git clone https://github.com/thanhndv212/figaroh-examples.git
-cd figaroh-examples && pip install -r requirements.txt
+git submodule update --init --recursive
+```
+
+Run examples with pixi:
+
+```bash
+pixi run -e examples python examples/ur10/calibration.py
 ```
 
 ---
@@ -269,7 +278,7 @@ Export calibrated/identified parameters to URDF or YAML.
 
 ## Examples
 
-Complete working examples are available in [figaroh-examples](https://github.com/thanhndv212/figaroh-examples):
+Complete working examples are available in [figaroh-examples](https://github.com/book-seed/figaroh-examples):
 
 | Robot | Tasks |
 |-------|-------|
