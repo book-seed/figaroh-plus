@@ -1,5 +1,5 @@
 workflow: full
-phase: build
+phase: verify
 context_compression: off
 build_mode: executing-plans
 build_pause: null
@@ -20,3 +20,4 @@ verified_at: null
 archived: false
 handoff_context: openspec/changes/integrate-examples-submodule/.comet/handoff/design-context.json
 handoff_hash: a177330d90246d52320e66471b7053bfb51ed7c882d5ca15dc91402fe93b5229
+build_command: pixi run build
