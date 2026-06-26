@@ -125,3 +125,14 @@ default = { features = ["core", "dev", "docs"], solve-group = "default" }
 docs = { features = ["core", "docs"], solve-group = "default" }
 test = { features = ["core", "dev"], solve-group = "default" }
 examples = { features = ["core", "examples"], solve-group = "default" }
+
+# =============================================================================
+# Pyright / Pylance configuration
+# =============================================================================
+
+[tool.pyright]
+pythonPath = ".pixi/envs/default/bin/python"
+extraPaths = [
+    "figaroh-examples",
+    ".pixi/envs/default/lib/python3.12/site-packages",
+]
