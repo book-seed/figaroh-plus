@@ -3,20 +3,13 @@
 
 FIGAROH is a Python toolbox providing efficient and highly flexible frameworks for dynamics identification and geometric calibration of rigid multi-body systems based on the URDF modeling convention. It supports both serial (industrial manipulators) and tree-structure systems (humanoids, mobile manipulators).
 
-**📦 Available on PyPI:** `pip install figaroh`  
-**📖 Version:** 0.4.3
+
 [![pixi](https://img.shields.io/badge/managed%20with-pixi-00B388)](https://prefix.dev)
 
-> Note: This repo is a fork from [gitlab repo](https://gitlab.laas.fr/gepetto/figaroh) of which the author is no longer a contributor.
 
 ---
 
 ## Installation
-
-
-### Development Installation
-
-**pixi (Recommended)**
 ```bash
 git clone --recurse-submodules https://github.com/book-seed/figaroh-plus.git
 cd figaroh-plus
@@ -48,9 +41,9 @@ pixi run build    # Build wheel
 pixi run docs     # Build documentation
 ```
 
-### Examples Repository
+### Examples
 
-The figaroh-examples repository is included as a git submodule. It is automatically cloned
+The figaroh-examples is included as a git submodule. It is automatically cloned
 when you use `git clone --recurse-submodules`. If you already cloned without the flag:
 
 ```bash
