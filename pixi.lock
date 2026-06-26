@@ -3587,7 +3587,20 @@ packages:
   timestamp: 1769460817696
 - pypi: ./
   name: figaroh
-  requires_python: '>=3.8'
+  requires_dist:
+  - numpy
+  - scipy
+  - pin
+  - matplotlib
+  - pyyaml
+  - meshcat
+  - pandas
+  - rospkg
+  - picos
+  - numdifftools
+  - ndcurves
+  - build>=1.5.0,<2
+  requires_python: '>=3.12'
 - pypi: https://files.pythonhosted.org/packages/02/10/5da547df7a391dcde17f59520a231527b8571e6f46fc8efb02ccb370ab12/docutils-0.22.4-py3-none-any.whl
   name: docutils
   version: 0.22.4
