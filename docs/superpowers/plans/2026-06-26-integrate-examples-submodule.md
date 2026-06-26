@@ -58,7 +58,7 @@ base-ref: 34e2a56e0abd44a777287803d5ec40f6f939a27b
 - Consumes: figaroh-examples 远程仓库 `https://github.com/book-seed/figaroh-examples.git`，commit `3983de5`
 - Produces: 已注册的 git submodule，供 Task 2-3 在其内进行操作
 
-- [ ] **Step 1: 确认当前 figaroh-examples 无未提交变更**
+- [x] **Step 1: 确认当前 figaroh-examples 无未提交变更**
 
 Run:
 ```bash
@@ -66,12 +66,12 @@ cd /home/tyche/Documents/figaroh-plus/figaroh-examples && git status
 ```
 Expected: `nothing to commit, working tree clean`
 
-- [ ] **Step 2: 记录当前 commit hash 供后续验证**
+- [x] **Step 2: 记录当前 commit hash 供后续验证**
 
 Run: `cd /home/tyche/Documents/figaroh-plus/figaroh-examples && git rev-parse HEAD`
 Expected: `3983de5`（记录此值，后续 submodule 预期就是此 commit）
 
-- [ ] **Step 3: 删除当前 untracked figaroh-examples 目录**
+- [x] **Step 3: 删除当前 untracked figaroh-examples 目录**
 
 Run:
 ```bash
@@ -82,7 +82,7 @@ Expected: `figaroh-examples/` 目录消失
 
 验证：`ls figaroh-examples` → `ls: cannot access 'figaroh-examples': No such file or directory`
 
-- [ ] **Step 4: 执行 git submodule add**
+- [x] **Step 4: 执行 git submodule add**
 
 Run:
 ```bash
@@ -101,7 +101,7 @@ Expected: `Cloning into '/home/tyche/Documents/figaroh-plus/figaroh-examples'...
   ```
 - `git submodule status` → 以 ` 3983de5...` 开头（空格前缀表示未暂存）
 
-- [ ] **Step 5: Checkout main 分支并验证 commit**
+- [x] **Step 5: Checkout main 分支并验证 commit**
 
 Run:
 ```bash
@@ -115,7 +115,7 @@ Switched to branch 'main'
 3983de5 style: add black formatter pre-commit hooks and reformat codebase
 ```
 
-- [ ] **Step 6: 提交 figaroh-plus 层 submodule 注册**
+- [x] **Step 6: 提交 figaroh-plus 层 submodule 注册**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -160,7 +160,7 @@ git commit -m "feat: add figaroh-examples as git submodule
 - Consumes: Task 1 的 figaroh-examples submodule
 - Produces: 清理后的 figaroh-examples 工作树（独立的 git 仓库变更），供 Task 6 推送到远程
 
-- [ ] **Step 1: 删除 environment.yml**
+- [x] **Step 1: 删除 environment.yml**
 
 Run:
 ```bash
@@ -169,7 +169,7 @@ git rm environment.yml
 ```
 Expected: `rm 'environment.yml'`
 
-- [ ] **Step 2: 删除 requirements.txt**
+- [x] **Step 2: 删除 requirements.txt**
 
 Run:
 ```bash
@@ -178,7 +178,7 @@ git rm requirements.txt
 ```
 Expected: `rm 'requirements.txt'`
 
-- [ ] **Step 3: 更新 figaroh-examples 顶层 README.md**
+- [x] **Step 3: 更新 figaroh-examples 顶层 README.md**
 
 将安装说明从 pip 方式替换为 pixi 方式。编辑 `figaroh-examples/README.md`，将 "## Install" 节（第5-16行）替换为：
 
@@ -214,7 +214,7 @@ pip install figaroh
 Note: This repo no longer ships environment.yml or requirements.txt — dependency management is handled by pixi in the parent figaroh-plus project.
 ```
 
-- [ ] **Step 4: 更新 examples/ur10/README.md——删除 pip install + cvxpy 段**
+- [x] **Step 4: 更新 examples/ur10/README.md——删除 pip install + cvxpy 段**
 
 编辑 `figaroh-examples/examples/ur10/README.md`，删除 "Installation and Dependencies" 节（第230-250行）中：
 
@@ -236,7 +236,7 @@ All dependencies (figaroh, numpy, scipy, matplotlib, pandas, pinocchio, cyipopt,
 
 注意：只替换安装依赖相关内容，保留其他所有文档内容。
 
-- [ ] **Step 5: 更新 examples/tiago/README.md**
+- [x] **Step 5: 更新 examples/tiago/README.md**
 
 读取 `figaroh-examples/examples/tiago/README.md` 前30行，搜索是否有 `pip install` 相关语句。如果有则替换为：
 
@@ -247,11 +247,11 @@ Run: `pixi run -e examples python examples/tiago/calibration.py` from the figaro
 
 如果没有 pip install 段，则跳过此步，仅确认。
 
-- [ ] **Step 6: 更新 examples/talos/README.md**
+- [x] **Step 6: 更新 examples/talos/README.md**
 
 读取 `figaroh-examples/examples/talos/README.md` 前30行，搜索是否有 `pip install` 相关语句。如果有则替换（参考 Step 5 模板）。如果没有则跳过。
 
-- [ ] **Step 7: 提交 figaroh-examples 仓库的变更**
+- [x] **Step 7: 提交 figaroh-examples 仓库的变更**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus/figaroh-examples
@@ -284,7 +284,7 @@ git commit -m "chore: clean up obsolete config files and update READMEs for pixi
 - Consumes: 当前 pyproject.toml（含 `build` 依赖）、.gitignore、README.md
 - Produces: 更新后的配置，供 Task 4 生成 pixi.lock
 
-- [ ] **Step 1: 从 pyproject.toml 删除 `build>=1.5.0,<2`**
+- [x] **Step 1: 从 pyproject.toml 删除 `build>=1.5.0,<2`**
 
 编辑 `pyproject.toml` 第52行，从 `[project.dependencies]` 列表中删除：
 ```toml
@@ -307,7 +307,7 @@ dependencies = [
 ]
 ```
 
-- [ ] **Step 2: 在 pixi examples feature 的 pypi-dependencies 中添加 viser**
+- [x] **Step 2: 在 pixi examples feature 的 pypi-dependencies 中添加 viser**
 
 编辑 `pyproject.toml` 第121行区域（`[tool.pixi.feature.examples.pypi-dependencies]`），改为：
 
@@ -319,7 +319,7 @@ ipywidgets = "*"
 viser = "*"
 ```
 
-- [ ] **Step 3: 更新 pyproject.toml 中的 Examples URL**
+- [x] **Step 3: 更新 pyproject.toml 中的 Examples URL**
 
 编辑 `pyproject.toml` 第58行，确认 `[project.urls]` 中的 Examples URL 为：
 ```toml
@@ -329,7 +329,7 @@ Examples = "https://github.com/book-seed/figaroh-examples"
 
 验证：当前 pyproject.toml 中 `[project.urls]` 的 Examples 值为 `https://github.com/thanhndv212/figaroh-examples`。设计文档 D2 指定 URL 为 `https://github.com/book-seed/figaroh-examples.git`。如果两个 URL 指向同一个仓库的不同别名，则无需修改；如果不同，则按要求更新。
 
-- [ ] **Step 4: 更新 .gitignore 中关于 examples 的注释**
+- [x] **Step 4: 更新 .gitignore 中关于 examples 的注释**
 
 将第17-18行：
 ```
@@ -342,7 +342,7 @@ Examples = "https://github.com/book-seed/figaroh-examples"
 # See: https://github.com/book-seed/figaroh-examples
 ```
 
-- [ ] **Step 5: 更新 README.md——克隆说明改为 --recurse-submodules + 更新 examples 使用说明**
+- [x] **Step 5: 更新 README.md——克隆说明改为 --recurse-submodules + 更新 examples 使用说明**
 
 在 README.md 中找到 "### Development Installation" 节下的 pixi 克隆示例（第21-27行）：
 
@@ -382,7 +382,7 @@ Run examples with pixi:
 pixi run -e examples python examples/ur10/calibration.py
 ```
 
-- [ ] **Step 6: 提交 figaroh-plus 配置变更**
+- [x] **Step 6: 提交 figaroh-plus 配置变更**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -408,7 +408,7 @@ git commit -m "feat: update project config for examples submodule integration
 - Consumes: Task 3 更新的 pyproject.toml（含 viser 依赖）
 - Produces: 更新后的 pixi.lock，包含 viser 解析
 
-- [ ] **Step 1: 运行 pixi update 重新生成 pixi.lock**
+- [x] **Step 1: 运行 pixi update 重新生成 pixi.lock**
 
 Run:
 ```bash
@@ -419,7 +419,7 @@ Expected: pixi 解析所有依赖，输出平台解析信息，重新生成 `pix
 
 如果出现版本冲突，检查 viser 是否与现有依赖有 pin 版本冲突。viser 是独立包，不应有冲突。如果冲突，在 examples feature 中显式指定 viser 兼容版本。
 
-- [ ] **Step 2: 验证核心包可导入**
+- [x] **Step 2: 验证核心包可导入**
 
 Run:
 ```bash
@@ -431,7 +431,7 @@ Expected: `All imports OK`
 - `hppfcl` 通过 `coal`（pin 的传递依赖）提供，无需额外声明
 - `pinocchio` 由 `pin` 包提供
 
-- [ ] **Step 3: 验证 load_robot 的 models 目录解析**
+- [x] **Step 3: 验证 load_robot 的 models 目录解析**
 
 Run:
 ```bash
@@ -455,7 +455,7 @@ Model resolution OK
 
 如果 Method 1 失败（figaroh_examples 未安装为包），确认 Method 3 回退正常工作。设计文档说明无需修改 load_robot.py。
 
-- [ ] **Step 4: 确认 hppfcl 由 coal 传递提供**
+- [x] **Step 4: 确认 hppfcl 由 coal 传递提供**
 
 Run:
 ```bash
@@ -470,7 +470,7 @@ print('hppfcl is available via coal transitive dependency')
 ```
 Expected: 成功导入 hppfcl，说明 coal（pin 依赖）提供了 hppfcl。无需在 examples feature 中声明 hppfcl。
 
-- [ ] **Step 5: 提交 pixi.lock**
+- [x] **Step 5: 提交 pixi.lock**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -492,7 +492,7 @@ git commit -m "chore: regenerate pixi.lock with viser dependency
 - Consumes: Task 1-4 的所有输出
 - Produces: 验证通过的完整 submodule 工作流
 
-- [ ] **Step 1: 运行 UR10 calibration 例程**
+- [x] **Step 1: 运行 UR10 calibration 例程**
 
 Run:
 ```bash
@@ -503,7 +503,7 @@ Expected: 脚本正常执行（可能需要几分钟），输出标定结果或�
 
 如果脚本因缺少数据文件失败，记录错误信息但不阻塞——核心目标是验证依赖和模型路径可解析。脚本可能需要真实机器人数据才能完成完整执行。
 
-- [ ] **Step 2: 运行完整测试套件**
+- [x] **Step 2: 运行完整测试套件**
 
 Run:
 ```bash
@@ -519,7 +519,7 @@ tests/... [100%]
 
 如果测试失败，检查是否与 submodule 集成或依赖变更相关。如果是既有失败（在 base-ref 上已存在），记录在验证报告中。
 
-- [ ] **Step 3: 验证 git submodule 状态**
+- [x] **Step 3: 验证 git submodule 状态**
 
 Run:
 ```bash
@@ -542,7 +542,7 @@ Expected: 输出以空格开头（表示 submodule 指针与当前 checkout 一�
 - Consumes: Task 2 的 figaroh-examples 本地提交，Task 1/3/4 的 figaroh-plus 提交
 - Produces: 远程仓库同步完成的完整集成
 
-- [ ] **Step 1: 推送 figaroh-examples 仓库清理变更**
+- [x] **Step 1: 推送 figaroh-examples 仓库清理变更**
 
 Run:
 ```bash
@@ -556,7 +556,7 @@ Expected: figaroh-examples 仓库的 `environment.yml` 删除、`requirements.tx
 git remote -v
 ```
 
-- [ ] **Step 2: 更新 figaroh-plus 中 submodule 指针到最新**
+- [x] **Step 2: 更新 figaroh-plus 中 submodule 指针到最新**
 
 如果在 Step 1 中推送成功，figaroh-examples 有了新的 commit。更新父仓库的 submodule 指针：
 
@@ -578,7 +578,7 @@ cd /home/tyche/Documents/figaroh-plus
 git add figaroh-examples
 ```
 
-- [ ] **Step 3: 提交 figaroh-plus 最终变更（含 submodule 指针更新）**
+- [x] **Step 3: 提交 figaroh-plus 最终变更（含 submodule 指针更新）**
 
 查看当前暂存状态并提交：
 

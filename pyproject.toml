@@ -107,6 +107,7 @@ black = "*"
 isort = "*"
 flake8 = "*"
 mypy = "*"
+build = "*"
 
 [tool.pixi.feature.docs.pypi-dependencies]
 sphinx = "*"
