@@ -172,7 +172,7 @@ class BaseCalibration(ABC):
         self.model = self.robot.model
         self.data = self.robot.data
         self.del_list_ = del_list
-        self.calib_config = None
+        self.calib_config: dict | None = None
         self.load_param(config_file)
         self.nvars = len(self.calib_config["param_name"])
         self._data_path = abspath(self.calib_config["data_file"])

@@ -75,21 +75,21 @@ class BaseIdentification(ABC):
         self.load_param(config_file)
 
         # Initialize attributes for identification results
-        self.dynamic_regressor = None
-        self.standard_parameter = None
-        self.additional_parameters = None
-        self.custom_parameters = None
-        self.params_base = None
-        self.dynamic_regressor_base = None
-        self.phi_base = None
-        self.rms_error = None
-        self.correlation = None
-        self.processed_data = None
-        self.result = None
-        self.num_samples = None
-        self.tau_ref = None
-        self.tau_identif = None
-        self.tau_noised = None
+        self.dynamic_regressor: np.ndarray | None = None
+        self.standard_parameter: list | None = None
+        self.additional_parameters: list | None = None
+        self.custom_parameters: dict | None = None
+        self.params_base: list | None = None
+        self.dynamic_regressor_base: np.ndarray | None = None
+        self.phi_base: np.ndarray | None = None
+        self.rms_error: float | None = None
+        self.correlation: float | None = None
+        self.processed_data: dict | None = None
+        self.result: dict | None = None
+        self.num_samples: int | None = None
+        self.tau_ref: np.ndarray | None = None
+        self.tau_identif: np.ndarray | None = None
+        self.tau_noised: np.ndarray | None = None
 
         # Set default filter configuration, can be overridden in subclasses
         self.filter_config = self.identif_config.get("filter_config", {

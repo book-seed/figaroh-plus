@@ -165,8 +165,8 @@ class BaseOptimalCalibration(ABC):
         self.load_param(config_file)
 
         # Initialize attributes for optimal calibration
-        self.optimal_configurations = None
-        self.optimal_weights = None
+        self.optimal_configurations: list | None = None
+        self.optimal_weights: list | None = None
         self._sampleConfigs_file = self.calib_config.get("sample_configs_file")
 
         # Calculate minimum number of configurations needed

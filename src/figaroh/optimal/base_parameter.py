@@ -44,7 +44,7 @@ class BaseParameterComputer:
     def __init__(self, robot, identif_config, active_joints, soft_lim_pool):
         self.robot = robot
         self.model = self.robot.model
-        self.standard_parameter = None
+        self.standard_parameter: list | None = None
         self.identif_config = identif_config
         self.active_joints = active_joints
         self.soft_lim_pool = soft_lim_pool
