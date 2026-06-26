@@ -2,6 +2,7 @@
 change: migrate-to-pixi
 design-doc: docs/superpowers/specs/2026-06-25-pixi-migration-design.md
 base-ref: 793aff08702102f0cbc6e6c12c220da5ea6af55f
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 # pixi 迁移实施计划
@@ -23,6 +24,7 @@ base-ref: 793aff08702102f0cbc6e6c12c220da5ea6af55f
 - pixi.lock 必须包含 linux-aarch64、linux-64、osx-arm64 三平台解析条目
 - 所有变更基于 base-ref `793aff08702102f0cbc6e6c12c220da5ea6af55f`
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ## File Structure
@@ -37,6 +39,7 @@ base-ref: 793aff08702102f0cbc6e6c12c220da5ea6af55f
 | `.gitignore` | **修改** | 添加 `.pixi/` 目录排除 |
 | `README.md` | **修改** | 添加 pixi quickstart 开发环境说明 |
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ### Task 1: 创建 pixi.toml（Feature + 环境 + Task 完整配置）
@@ -143,6 +146,7 @@ git commit -m "feat(pixi): add pixi.toml with feature-based dependency managemen
 - Channel: conda-forge"
 ```
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ### Task 2: 生成 pixi.lock 锁文件
@@ -183,6 +187,7 @@ git commit -m "feat(pixi): generate pixi.lock with multi-platform dependency res
 - Verified figaroh imports correctly in default environment"
 ```
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ### Task 3: 精简 pyproject.toml——删除依赖声明，保留构建元数据
@@ -323,6 +328,7 @@ git commit -m "refactor(pyproject): remove dependency declarations, now managed 
 - Preserve build-system, project metadata, hatch config, and project.urls"
 ```
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ### Task 4: 清理旧配置文件
@@ -381,6 +387,7 @@ git commit -m "chore: remove environment.yml and add .pixi/ to .gitignore
 - .pixi/ is pixi's local environment directory, should not be tracked"
 ```
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ### Task 5: 更新 CI 工作流
@@ -461,6 +468,7 @@ git commit -m "ci(docs): migrate to pixi-based setup in CI workflow
 - Update actions/checkout to v4"
 ```
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ### Task 6: 更新 README.md 开发环境说明
@@ -539,6 +547,7 @@ git commit -m "docs(readme): add pixi quickstart and environment documentation
 - Keep pip installation as secondary option"
 ```
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ### Task 7: 完整集成验证
@@ -597,6 +606,7 @@ Expected: docs 构建成功，`docs/build/html/` 目录中包含 `index.html`。
 Run: `pixi run clean`
 Expected: `dist/`、`build/`、`*.egg-info` 被删除。
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 ## Self-Review
@@ -628,6 +638,7 @@ Expected: `dist/`、`build/`、`*.egg-info` 被删除。
 - 环境名称 default/docs/test/examples 在 README 和 pixi.toml 中一致
 - 平台列表 `linux-aarch64, linux-64, osx-arm64` 在 Task 1 和 CI（ubuntu-latest = linux-64）中一致
 
+archived-with: 2026-06-25-migrate-to-pixi
 ---
 
 Plan complete and saved to `docs/superpowers/plans/2026-06-25-pixi-migration.md`. Two execution options:

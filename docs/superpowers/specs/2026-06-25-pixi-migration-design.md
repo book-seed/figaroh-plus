@@ -2,6 +2,8 @@
 comet_change: migrate-to-pixi
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-25-migrate-to-pixi
+status: final
 ---
 
 # pixi 迁移技术设计

@@ -13,19 +13,10 @@ FIGAROH is a Python toolbox providing efficient and highly flexible frameworks f
 
 ## Installation
 
-### Quick Installation (Recommended)
-
-Install the core FIGAROH package with all dependencies (except for cyipopt):
-
-```bash
-pip install figaroh
-```
 
 ### Development Installation
 
-For development or local installation from source:
-
-**Method 1: pixi (Recommended)**
+**pixi (Recommended)**
 ```bash
 git clone https://github.com/thanhndv212/figaroh-plus.git
 cd figaroh-plus
@@ -35,13 +26,6 @@ pixi install
 pixi shell
 ```
 
-**Method 2: pip (Simple)**
-```bash
-git clone https://github.com/thanhndv212/figaroh-plus.git
-cd figaroh-plus
-pip install -e .
-```
-Note: Method 2 may miss conda-managed dependencies like cyipopt.
 
 ### pixi Environments
 
