@@ -9,10 +9,48 @@ import numpy.typing as npt
 
 # === Classes ===
 
-class Model: ...
-class Data: ...
-class Frame: ...
-class Inertia: ...
+class Model:
+    name: str
+    names: list[str]
+    nq: int
+    nv: int
+    njoints: int
+    joints: list[Any]
+    frames: list[Frame]
+    inertias: list[Inertia]
+    lowerPositionLimit: npt.NDArray
+    upperPositionLimit: npt.NDArray
+    jointPlacements: list[SE3]
+    def getJointId(self, name: str) -> int: ...
+    def getFrameId(self, name: str) -> int: ...
+    def createData(self) -> Data: ...
+
+class Data:
+    com: list[npt.NDArray]
+    mass: list[float]
+    oMf: list[SE3]
+    oMi: list[Inertia]
+    tau: npt.NDArray
+    M: npt.NDArray
+    nle: npt.NDArray
+    g: npt.NDArray
+    J: npt.NDArray
+    dJ: npt.NDArray
+    a_gf: npt.NDArray
+    v: npt.NDArray
+    a: npt.NDArray
+    f: npt.NDArray
+    Fs: list[Force]
+
+class Frame:
+    name: str
+    type: int
+
+class Inertia:
+    mass: float
+    lever: npt.NDArray
+    inertia: npt.NDArray
+
 class SE3: ...
 class Force: ...
 class Motion: ...
