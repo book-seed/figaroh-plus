@@ -126,7 +126,7 @@ class BaseCalibration(ABC):
     """
 
     @handle_calibration_errors
-    def __init__(self, robot, config_file: str, del_list: List[int] = None):
+    def __init__(self, robot, config_file: str, del_list: Optional[List[int]] = None):
         """Initialize robot calibration framework.
         
         Sets up the calibration environment by loading robot model,
@@ -172,7 +172,7 @@ class BaseCalibration(ABC):
         self.model = self.robot.model
         self.data = self.robot.data
         self.del_list_ = del_list
-        self.calib_config: dict | None = None
+        self.calib_config : dict = {}
         self.load_param(config_file)
         self.nvars = len(self.calib_config["param_name"])
         self._data_path = abspath(self.calib_config["data_file"])

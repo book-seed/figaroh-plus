@@ -165,7 +165,7 @@ def _load_figaroh_original(robot_urdf: str, package_dirs: Optional[str], isFext:
         return _load_from_ros_param(isFext)
 
 
-def _prepare_package_dirs(robot_urdf: str, package_dirs: Optional[str], robot_pkg: Optional[str]) -> str:
+def _prepare_package_dirs(robot_urdf: str, package_dirs: Optional[str], robot_pkg: Optional[str]) -> Optional[str]:
     """Prepare package directories for robot loading."""
     if package_dirs is None:
         if robot_pkg is not None:

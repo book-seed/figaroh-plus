@@ -76,16 +76,16 @@ class BaseIdentification(ABC):
 
         # Initialize attributes for identification results
         self.dynamic_regressor: np.ndarray | None = None
-        self.standard_parameter: list | None = None
+        self.standard_parameter: dict | None = None
         self.additional_parameters: list | None = None
         self.custom_parameters: dict | None = None
-        self.params_base: list | None = None
+        self.params_base: list = []
         self.dynamic_regressor_base: np.ndarray | None = None
-        self.phi_base: np.ndarray | None = None
+        self.phi_base: np.ndarray = np.array([])
         self.rms_error: float | None = None
         self.correlation: float | None = None
         self.processed_data: dict | None = None
-        self.result: dict | None = None
+        self.result: dict = {}
         self.num_samples: int | None = None
         self.tau_ref: np.ndarray | None = None
         self.tau_identif: np.ndarray | None = None
@@ -251,6 +251,9 @@ class BaseIdentification(ABC):
         #     i for i, active in enumerate(active_params.values()) if active
         # ]
         # phi_full[active_indices] = phi_reduced
+        
+        if self.standard_parameter is None:
+            raise ValueError("Standard parameters must be initialized before solving.")
 
         # Step 4: Compute base parameters using QR decomposition
         from figaroh.tools.qrdecomposition import double_QR

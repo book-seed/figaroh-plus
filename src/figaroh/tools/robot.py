@@ -36,7 +36,7 @@ class Robot(RobotWrapper):
     def __init__(
         self,
         robot_urdf: str,
-        package_dirs: str,
+        package_dirs: Optional[str] = None,
         isFext: bool = False,
         freeflyer_ori: Optional[np.ndarray] = None,
         freeflyer_limits: Optional[Tuple[float, float]] = None,
