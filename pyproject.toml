@@ -132,6 +132,7 @@ examples = { features = ["core", "examples"], solve-group = "default" }
 
 [tool.pyright]
 pythonPath = ".pixi/envs/default/bin/python"
+stubPath = "typings"
 extraPaths = [
     "figaroh-examples",
     ".pixi/envs/default/lib/python3.12/site-packages",
