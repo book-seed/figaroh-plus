@@ -48,16 +48,15 @@ class BaseParameterComputer:
         self.identif_config = identif_config
         self.active_joints = active_joints
         self.soft_lim_pool = soft_lim_pool
+        self.logger = logging.getLogger(__name__)
 
     def compute_base_indices(self) -> Tuple[np.ndarray, np.ndarray]:
         """Compute base parameter indices from random trajectory."""
-        logging.info(
-            "Computing base parameter indices from random trajectory..."
-        )
+        self.logger.info(f"Computing base parameter indices from random trajectory")
 
         try:
             # Generate random trajectory for base parameter computation
-            n_wps_r = 100
+            n_wps_r = 100 # 路径点数量
             freq_r = 100
             CB_r = CubicSpline(self.robot, n_wps_r, self.active_joints)
             WP_r = WaypointsGeneration(self.robot, n_wps_r, self.active_joints)

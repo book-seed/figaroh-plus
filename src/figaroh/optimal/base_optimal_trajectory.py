@@ -95,6 +95,10 @@ class BaseOptimalTrajectory:
             (3, n_active_joints), self.trajectory_config["soft_lim"]
         )
 
+        self.logger.info(f"""
+                         Initializing specialized component: 
+                         cubic spline, waypoint generation, base parameter computer, constraint manager""")
+
         # Initialize cubic spline and waypoint generation
         self.CB = CubicSpline(
             self.robot,
@@ -109,7 +113,6 @@ class BaseOptimalTrajectory:
             self.trajectory_config["soft_lim"],
         )
 
-        # Initialize specialized components
         self.base_computer = BaseParameterComputer(
             self.robot, self.identif_config, self.active_joints, self.soft_lim_pool
         )
