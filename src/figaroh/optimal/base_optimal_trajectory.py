@@ -91,13 +91,9 @@ class BaseOptimalTrajectory:
         """Initialize trajectory generation components."""
         # Create soft limit pool
         n_active_joints = len(self.active_joints)
-        self.soft_lim_pool = np.full(
-            (3, n_active_joints), self.trajectory_config["soft_lim"]
-        )
+        self.soft_lim_pool = np.full((3, n_active_joints), self.trajectory_config["soft_lim"])
 
-        self.logger.info(f"""
-                         Initializing specialized component: 
-                         cubic spline, waypoint generation, base parameter computer, constraint manager""")
+        self.logger.info(f"Initializing specialized component: cubic spline, waypoint generation, base parameter computer, constraint manager")
 
         # Initialize cubic spline and waypoint generation
         self.CB = CubicSpline(
