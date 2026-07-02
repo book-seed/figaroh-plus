@@ -6,21 +6,21 @@
 - [x] 1.2 Define `Backend` abstract base class with `build_regressor(q, v, a,
   identif_config)`, `gradient(objective_fn, x)`, `jacobian(constraints_fn, x)`
   interface methods
-- [ ] 1.3 Implement `NumericalBackend(Backend)` — wraps existing code from
+- [x] 1.3 Implement `NumericalBackend(Backend)` — wraps existing code from
   `tools/regressor.py` and `tools/robotipopt.py` with no logic changes
 - [ ] 1.4 Add `figaroh/backend` to root `__init__.py` exports
 
 ## 2. CasADi Backend Core
 
-- [ ] 2.1 Implement `CasadiBackend(Backend).__init__()` with lazy symbolic
+- [x] 2.1 Implement `CasadiBackend(Backend).__init__()` with lazy symbolic
   model initialization (`cpin.Model`, `cpin.computeJointTorqueRegressor`)
-- [ ] 2.2 Implement `CasadiBackend.build_regressor()` — builds CasADi `Function`
+- [x] 2.2 Implement `CasadiBackend.build_regressor()` — builds CasADi `Function`
   from symbolic regressor, maps over N sample columns
-- [ ] 2.3 Implement `CasadiBackend.gradient()` — wraps objective in CasADi
+- [x] 2.3 Implement `CasadiBackend.gradient()` — wraps objective in CasADi
   `Function`, uses `cs.gradient()` for analytical AD
-- [ ] 2.4 Implement `CasadiBackend.jacobian()` — wraps constraints in CasADi
+- [x] 2.4 Implement `CasadiBackend.jacobian()` — wraps constraints in CasADi
   `Function`, uses `cs.jacobian()` for analytical AD
-- [ ] 2.5 Add error handling for missing `pinocchio.casadi` import with
+- [x] 2.5 Add error handling for missing `pinocchio.casadi` import with
   clear install instructions
 
 ## 3. Integration with Optimal Trajectory
