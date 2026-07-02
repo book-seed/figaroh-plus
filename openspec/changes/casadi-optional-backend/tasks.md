@@ -2,8 +2,8 @@
 
 ## 1. Backend Abstraction Layer
 
-- [ ] 1.1 Create `src/figaroh/backend/` package with `__init__.py`, `base.py`
-- [ ] 1.2 Define `Backend` abstract base class with `build_regressor(q, v, a,
+- [x] 1.1 Create `src/figaroh/backend/` package with `__init__.py`, `base.py`
+- [x] 1.2 Define `Backend` abstract base class with `build_regressor(q, v, a,
   identif_config)`, `gradient(objective_fn, x)`, `jacobian(constraints_fn, x)`
   interface methods
 - [ ] 1.3 Implement `NumericalBackend(Backend)` — wraps existing code from
