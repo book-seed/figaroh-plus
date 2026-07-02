@@ -77,3 +77,103 @@ class TestCreateBackendFactory:
         with patch.dict('sys.modules', {'pinocchio.casadi': None}):
             with pytest.raises(ImportError):
                 create_backend("casadi")
+
+
+class TestNumericalBackend:
+    """Test NumericalBackend concrete implementation."""
+
+    def test_name(self):
+        """NumericalBackend.name returns 'numerical'."""
+        backend = NumericalBackend()
+        assert backend.name == "numerical"
+
+    def test_gradient_of_quadratic(self):
+        """gradient computes gradient of f(x) = x0^2 + x1^2 at (1, 2)."""
+        backend = NumericalBackend()
+        f = lambda x: float(x[0]**2 + x[1]**2)
+        grad = backend.gradient(f, np.array([1.0, 2.0]))
+        # Analytical: [2*x0, 2*x1] = [2, 4]
+        np.testing.assert_allclose(grad, [2.0, 4.0], rtol=1e-5)
+
+    def test_jacobian_of_linear_system(self):
+        """jacobian computes Jacobian of f(x) = [x0+2*x1, 3*x0+4*x1]."""
+        backend = NumericalBackend()
+        f = lambda x: np.array([x[0] + 2*x[1], 3*x[0] + 4*x[1]])
+        jac = backend.jacobian(f, np.array([1.0, 1.0]))
+        expected = np.array([[1.0, 2.0], [3.0, 4.0]])
+        np.testing.assert_allclose(jac, expected, rtol=1e-5)
+
+    def test_build_regressor_delegates_to_build_regressor_basic(self):
+        """build_regressor delegates to build_regressor_basic with correct args."""
+        mock_robot = MagicMock()
+        backend = NumericalBackend(robot=mock_robot)
+        q = np.array([[1.0], [2.0], [3.0]])
+        v = np.zeros((3, 1))
+        a = np.zeros((3, 1))
+        identif_config = {"has_friction": True}
+
+        with patch('figaroh.backend.numerical.build_regressor_basic') as mock_build:
+            mock_build.return_value = np.eye(5)
+            result = backend.build_regressor(q, v, a, identif_config)
+
+        mock_build.assert_called_once_with(mock_robot, q, v, a, identif_config)
+        np.testing.assert_array_equal(result, np.eye(5))
+
+    def test_create_solver_returns_callable(self):
+        """create_solver returns a callable that returns a dict on invocation."""
+        mock_problem = MagicMock()
+        mock_problem.get_initial_guess.return_value = [0.5, 1.0]
+        mock_problem.get_variable_bounds.return_value = ([0.0, 0.0], [2.0, 2.0])
+        mock_problem.get_constraint_bounds.return_value = ([-1.0], [1.0])
+        nlp_def = {"problem": mock_problem}
+        opts = {b"tol": 1e-6}
+
+        with patch('figaroh.backend.numerical.cyipopt') as mock_cyipopt:
+            mock_nlp = MagicMock()
+            mock_nlp.solve.return_value = (
+                np.array([0.5, 1.0]),
+                {"status": 0, "obj_val": 1.0},
+            )
+            mock_cyipopt.Problem.return_value = mock_nlp
+
+            backend = NumericalBackend()
+            solver = backend.create_solver(nlp_def, opts)
+
+            assert callable(solver)
+
+            result = solver()
+
+            assert isinstance(result, dict)
+            assert "x" in result
+            np.testing.assert_array_equal(result["x"], [0.5, 1.0])
+            mock_cyipopt.Problem.assert_called_once()
+
+    def test_create_solver_passes_custom_bounds(self):
+        """create_solver passes custom lbg/ubg to cyipopt.Problem."""
+        mock_problem = MagicMock()
+        mock_problem.get_initial_guess.return_value = [0.0, 0.0]
+        mock_problem.get_variable_bounds.return_value = ([-1.0, -1.0], [1.0, 1.0])
+        mock_problem.get_constraint_bounds.return_value = ([-5.0], [5.0])
+        nlp_def = {"problem": mock_problem}
+        opts = {b"tol": 1e-8}
+
+        with patch('figaroh.backend.numerical.cyipopt') as mock_cyipopt:
+            mock_nlp = MagicMock()
+            mock_nlp.solve.return_value = (
+                np.array([0.0, 0.0]),
+                {"status": 0},
+            )
+            mock_cyipopt.Problem.return_value = mock_nlp
+
+            backend = NumericalBackend()
+            solver = backend.create_solver(nlp_def, opts)
+
+            # Call with custom constraint bounds
+            solver(lbg=[0.0], ubg=[10.0])
+
+            mock_cyipopt.Problem.assert_called_once_with(
+                n=2, m=1,
+                problem_obj=mock_problem,
+                lb=[-1.0, -1.0], ub=[1.0, 1.0],
+                cl=[0.0], cu=[10.0],
+            )
