@@ -50,6 +50,11 @@ dependencies = [
     "ndcurves",
 ]
 
+[project.optional-dependencies]
+casadi = [
+    "casadi >=3.7.2",
+]
+
 [project.urls]
 Homepage = "https://github.com/book-seed/figaroh-plus"
 Repository = "https://github.com/book-seed/figaroh-plus"
@@ -120,11 +125,19 @@ notebook = "*"
 ipywidgets = "*"
 viser = "*"
 
+[tool.pixi.feature.casadi.dependencies]
+casadi = ">=3.7.2,<4"
+pinocchio = ">=4.0.0,<5"
+
 [tool.pixi.environments]
 default = { features = ["core", "dev", "docs"], solve-group = "default" }
 docs = { features = ["core", "docs"], solve-group = "default" }
 test = { features = ["core", "dev"], solve-group = "default" }
 examples = { features = ["core", "examples"], solve-group = "default" }
+casadi = { features = ["core", "dev", "casadi"], solve-group = "default" }
+
+[tool.pixi.dependencies]
+pinocchio = ">=4.0.0,<5"
 
 # =============================================================================
 # Pyright / Pylance configuration

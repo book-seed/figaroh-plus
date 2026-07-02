@@ -30,6 +30,7 @@ pixi provides multiple pre-configured environments:
 | `docs` | core + docs | Documentation building |
 | `test` | core + dev | Running tests |
 | `examples` | core + examples | Jupyter notebooks |
+| `casadi` | core + dev + casadi | CasADi symbolic backend |
 
 ### pixi Tasks
 
@@ -39,6 +40,32 @@ pixi run lint     # Run flake8 + mypy
 pixi run format   # Run black + isort
 pixi run build    # Build wheel
 pixi run docs     # Build documentation
+```
+
+### Optional: CasADi Backend
+
+The CasADi backend provides analytical gradient/Jacobian/Hessian computation
+for 5-20x faster trajectory optimization.
+
+```bash
+# With pixi
+pixi install --environment casadi
+
+# With pip
+pip install figaroh[casadi]
+
+# With conda
+conda install -c conda-forge casadi pinocchio
+```
+
+Usage:
+```python
+from figaroh.backend import create_backend
+
+# Programmatic selection
+from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
+traj = BaseOptimalTrajectory(robot, active_joints, "config.yaml",
+                              backend="casadi")
 ```
 
 ### Examples
@@ -266,6 +293,7 @@ Export calibrated/identified parameters to URDF or YAML.
 | **Robotics** | pinocchio (pin), ndcurves, meshcat |
 | **Config** | pyyaml, rospkg |
 | **Optimization** | cyipopt (conda), picos |
+| **Optional** | casadi (analytical gradients/Jacobians/Hessians) |
 
 ---
 
