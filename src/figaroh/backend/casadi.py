@@ -290,13 +290,54 @@ class CasadiBackend(Backend):
         N = q_2d.shape[1]
 
         # Map over N columns
-        W_map = self._W_fun.map(N, "serial")
+        W_map = self._W_fun.map(N, "openmp")
         W_full = np.array(W_map(q_2d, v_2d, a_2d))
 
-        # Reshape stacked regressor
+        # CasADi map("serial") stacks samples horizontally per joint:
+        #   output shape = (nv, N * n_param_per_sample)
+        # Convert to interleaved format (N*nv, n_param) where row
+        # ordering matches the numerical backend.
         nv = self._cmodel.nv
-        n_param = W_full.shape[1]
-        W_stacked = W_full.reshape(N * nv, n_param)
+        n_param_total = W_full.shape[1] // N
+        # Reshape to (nv, N, n_param), then transpose to (N, nv, n_param)
+        # and flatten to (N*nv, n_param)
+        W_stacked = (
+            W_full.reshape(nv, N, n_param_total)
+            .transpose(1, 0, 2)
+            .reshape(N * nv, n_param_total)
+        )
+
+        # Append additional columns (friction, actuator inertia, offset)
+        # BEFORE column elimination — matches numerical backend order.
+        if identif_config:
+            has_friction = identif_config.get("has_friction", False)
+            has_actuator_inertia = identif_config.get("has_actuator_inertia", False)
+            has_joint_offset = identif_config.get("has_joint_offset", False)
+            act_idxv = identif_config.get("act_idxv", list(range(nv)))
+
+            if has_friction or has_actuator_inertia or has_joint_offset:
+                n_base = W_stacked.shape[1]
+                n_extra = (
+                    (2 if has_friction else 0) +
+                    (1 if has_actuator_inertia else 0) +
+                    (1 if has_joint_offset else 0)
+                ) * nv
+                W_ext = np.zeros((N * nv, n_base + n_extra))
+                W_ext[:, :n_base] = W_stacked
+
+                extra_col = n_base
+                for j in range(nv):
+                    if j in act_idxv:
+                        for i in range(N):
+                            row = j * N + i
+                            if has_friction:
+                                W_ext[row, extra_col + j] = v_2d[j, i]  # fv
+                                W_ext[row, extra_col + nv + j] = np.sign(v_2d[j, i])  # fs
+                            if has_actuator_inertia:
+                                W_ext[row, extra_col + 2*nv + j] = a_2d[j, i]  # ia
+                            if has_joint_offset:
+                                W_ext[row, extra_col + 3*nv + j] = 1.0  # offset
+                W_stacked = W_ext
 
         # Column elimination (threshold-based)
         if identif_config:

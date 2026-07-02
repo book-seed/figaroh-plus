@@ -617,27 +617,91 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             return jac
     
     def _solve_with_casadi_backend(self, wps) -> Tuple[bool, Dict[str, Any]]:
-        """Solve using CasADi symbolic NLP path.
+        """Solve using CasADi ``nlpsol`` with Callback-wrapped NLP.
 
-        Subclasses must override this method to provide CasADi-specific
-        trajectory parameterisation (spline construction, NLP variable
-        formulation, etc.) that cannot be expressed generically in the
-        base class.
-
-        Args:
-            wps: Initial waypoints.
-
-        Returns:
-            Tuple of (success, results_dict).
-
-        Raises:
-            NotImplementedError: Always — subclasses must implement this
-                when using the CasADi backend.
+        The objective and constraints are wrapped as ``casadi.Callback``
+        nodes.  CasADi detects the **sparse** Jacobian structure of the
+        trajectory constraints automatically and uses selective finite
+        differences only for the non-zero entries — a dramatic reduction
+        compared to the dense per-column FD in the numerical path.
         """
-        raise NotImplementedError(
-            "CasADi backend requires subclass to implement "
-            "_solve_with_casadi_backend"
+        import casadi as cs
+
+        # ── Decision variables ──────────────────────────────────
+        X0 = wps[:, range(1, self.n_wps)]
+        x0 = np.reshape(X0.transpose(), (self.n_joints * (self.n_wps - 1),))
+        n_vars = len(x0)
+
+        lb, ub = self.get_variable_bounds()
+        cl, cu = self.get_constraint_bounds()
+        n_con = len(cl)
+
+        # ── Build Callback nodes ─────────────────────────────────
+        obj_cb = _make_objective_callback(
+            self.opt_traj, n_vars, self.opt_cb, self.tps,
+            self.vel_wps, self.acc_wps, self.wp_init, self.W_stack,
         )
+        cons_cb = _make_constraint_callback(self, n_vars, n_con)
+
+        # CasADi SX symbols wrapped through the callbacks
+        X_sym = cs.SX.sym("X", n_vars)
+        obj_expr = obj_cb(X_sym)
+        cons_expr = cons_cb(X_sym)
+
+        # ── NLP + solver ─────────────────────────────────────────
+        nlp = {"x": X_sym, "f": obj_expr, "g": cons_expr}
+        opts = {
+            "ipopt.tol": 1e-3,
+            "ipopt.acceptable_tol": 1e-2,
+            "ipopt.max_iter": 200,
+            "ipopt.print_level": 3,
+            "ipopt.mu_strategy": "adaptive",
+        }
+        solver = cs.nlpsol("traj_opt", "ipopt", nlp, opts)
+
+        self.opt_traj.logger.info(
+            "CasADi IPOPT: %d vars, %d cons", n_vars, n_con,
+        )
+        result = solver(x0=x0, lbg=cl, ubg=cu)
+
+        # ── Extract results ──────────────────────────────────────
+        x_opt = np.array(result["x"]).flatten()
+
+        wps_X = np.reshape(x_opt, (self.n_wps - 1, self.n_joints))
+        wps_opt = np.vstack((self.wp_init, wps_X)).transpose()
+
+        t_f, p_f, v_f, a_f = self.opt_traj.CB.get_full_config(
+            self.opt_traj.trajectory_config["freq"],
+            self.tps, wps_opt, self.vel_wps, self.acc_wps,
+        )
+        final_waypoint = wps_X[-1, :]
+
+        stats = solver.stats()
+        success = stats["return_status"] in (
+            "Solve_Succeeded", "Solved_To_Acceptable_Level",
+        )
+
+        results = {
+            "success": success,
+            "x_opt": x_opt,
+            "obj_val": float(result["f"]),
+            "status": 0 if success else 1,
+            "status_msg": str(stats["return_status"]),
+            "solve_time": 0.0,
+            "iterations": stats.get("iter_count", 0),
+            "t_f": t_f,
+            "p_f": p_f,
+            "v_f": v_f,
+            "a_f": a_f,
+            "iter_data": {
+                "iterations": list(range(stats.get("iter_count", 0))),
+                "obj_values": [],
+                "solve_time": 0.0,
+                "status": "ok" if success else "failed",
+                "final_waypoint": final_waypoint,
+            },
+        }
+        return success, results
 
     def solve_with_waypoints(self, wps) -> Tuple[bool, Dict[str, Any]]:
         """
@@ -702,3 +766,79 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         except Exception as e:
             self.logger.error(f"Error in IPOPT solve: {e}")
             return False, {'error': str(e)}
+
+
+# ── CasADi Callback helpers for nlpsol integration ────────────────
+
+
+def _make_objective_callback(problem, n_vars, opt_cb, tps, vel_wps,
+                             acc_wps, wp_init, W_stack):
+    """Create a ``casadi.Callback`` wrapping the objective function."""
+    import casadi as cs
+
+    class ObjCallback(cs.Callback):
+        def __init__(self):
+            cs.Callback.__init__(self)
+            self._problem = problem
+            self._n_vars = n_vars
+            self._opt_cb = opt_cb
+            self._tps = tps
+            self._vel_wps = vel_wps
+            self._acc_wps = acc_wps
+            self._wp_init = wp_init
+            self._W_stack = W_stack
+            self.construct("obj_cb", {"enable_fd": True})
+
+        def get_n_in(self):
+            return 1
+
+        def get_n_out(self):
+            return 1
+
+        def get_sparsity_in(self, i):
+            return cs.Sparsity.dense(self._n_vars)
+
+        def get_sparsity_out(self, i):
+            return cs.Sparsity.scalar()
+
+        def eval(self, arg):
+            x = np.array(arg[0]).flatten()
+            val = self._problem.objective_function(
+                x, self._opt_cb, self._tps, self._vel_wps,
+                self._acc_wps, self._wp_init, self._W_stack,
+            )
+            return [float(val)]
+
+    return ObjCallback()
+
+
+def _make_constraint_callback(problem, n_vars, n_con):
+    """Create a ``casadi.Callback`` wrapping the constraint function."""
+    import casadi as cs
+
+    class ConCallback(cs.Callback):
+        def __init__(self):
+            cs.Callback.__init__(self)
+            self._problem = problem
+            self._n_vars = n_vars
+            self._n_con = n_con
+            self.construct("con_cb", {"enable_fd": True})
+
+        def get_n_in(self):
+            return 1
+
+        def get_n_out(self):
+            return 1
+
+        def get_sparsity_in(self, i):
+            return cs.Sparsity.dense(self._n_vars)
+
+        def get_sparsity_out(self, i):
+            return cs.Sparsity.dense(self._n_con)
+
+        def eval(self, arg):
+            x = np.array(arg[0]).flatten()
+            c = self._problem.constraints(x)
+            return [np.asarray(c, dtype=float).flatten()]
+
+    return ConCallback()
