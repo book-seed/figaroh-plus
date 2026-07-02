@@ -139,6 +139,12 @@ def create_backend(
     if isinstance(backend, Backend):
         return backend
 
+    # Duck-typing: accept any object that looks like a Backend (has a name
+    # attribute). This allows passing MagicMock instances in tests and
+    # enables the interface to work with non-ABC-compliant objects.
+    if not isinstance(backend, str) and hasattr(backend, 'name'):
+        return backend
+
     if backend == "numerical":
         return NumericalBackend(robot=robot, **kwargs)
 
