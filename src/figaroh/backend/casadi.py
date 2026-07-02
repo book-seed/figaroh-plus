@@ -67,12 +67,35 @@ def _lazy_import() -> None:
         try:
             import pinocchio.casadi as _cpin
         except ImportError as e:
+            # Detect whether the user has PyPI 'pin' (no CasADi bindings)
+            # vs no pinocchio at all.
+            try:
+                import pinocchio as _pin_check
+                _pin_check_version = getattr(_pin_check, "__version__", "unknown")
+            except ImportError:
+                _pin_check_version = None
+
+            if _pin_check_version is not None:
+                hint = (
+                    "You have the PyPI 'pin' package installed, which does "
+                    "NOT include CasADi bindings.\n"
+                    "Replace it with conda-forge pinocchio:\n"
+                    "  pip uninstall pin\n"
+                    "  pixi add --feature casadi casadi pinocchio\n"
+                    "or:\n"
+                    "  conda install -c conda-forge casadi pinocchio\n\n"
+                )
+            else:
+                hint = (
+                    "Install conda-forge pinocchio with CasADi bindings:\n"
+                    "  pixi add --feature casadi casadi pinocchio\n"
+                    "or:\n"
+                    "  conda install -c conda-forge casadi pinocchio\n\n"
+                )
             raise ImportError(
                 "CasADi backend requires conda-forge pinocchio with CasADi "
-                "bindings.\nInstall with:\n"
-                "  pixi add --feature casadi casadi pinocchio\n"
-                "or:\n"
-                "  conda install -c conda-forge casadi pinocchio\n\n"
+                "bindings (the PyPI 'pin' package does NOT support CasADi).\n"
+                + hint +
                 "Alternative: use backend='numerical' (default)."
             ) from e
         cpin = _cpin
