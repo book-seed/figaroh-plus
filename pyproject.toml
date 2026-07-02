@@ -74,6 +74,9 @@ examples = [
     "notebook",
     "ipywidgets",
 ]
+casadi = [
+    "casadi>=3.6.7",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/figaroh"]
@@ -100,3 +103,61 @@ Examples = "https://github.com/thanhndv212/figaroh-examples"
 
 # [project.gui-scripts]
 # figaroh-gui = "figaroh.gui:main"
+
+# =============================================================================
+# Pixi environment configuration
+# =============================================================================
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-aarch64", "linux-64", "osx-arm64"]
+
+[tool.pixi.tasks]
+shell.cmd = "bash"
+test.cmd = "pytest tests/"
+lint.cmd = "flake8 src/ && mypy src/"
+format.cmd = "black src/ tests/ && isort src/ tests/"
+clean.cmd = "rm -rf dist/ build/ *.egg-info"
+build.cmd = "python -m build"
+docs.cmd = "cd docs && make html"
+
+[tool.pixi.feature.core.dependencies]
+python = "3.12.*"
+cyipopt = { version = "*", channel = "conda-forge" }
+
+[tool.pixi.feature.core.pypi-dependencies]
+figaroh = { path = ".", editable = true }
+
+[tool.pixi.feature.dev.pypi-dependencies]
+pytest = ">=6.0"
+pytest-cov = "*"
+black = "*"
+isort = "*"
+flake8 = "*"
+mypy = "*"
+build = "*"
+
+[tool.pixi.feature.docs.pypi-dependencies]
+sphinx = "*"
+sphinx-rtd-theme = "*"
+sphinx-autodoc-typehints = "*"
+
+[tool.pixi.feature.examples.pypi-dependencies]
+jupyter = "*"
+notebook = "*"
+ipywidgets = "*"
+viser = "*"
+
+[tool.pixi.feature.casadi.dependencies]
+casadi = ">=3.6.7"
+pinocchio = ">=4.0.0,<5"
+
+[tool.pixi.environments]
+default = { features = ["core", "dev", "docs"], solve-group = "default" }
+docs = { features = ["core", "docs"], solve-group = "default" }
+test = { features = ["core", "dev"], solve-group = "default" }
+examples = { features = ["core", "examples"], solve-group = "default" }
+casadi = { features = ["core", "dev", "casadi"], solve-group = "default" }
+
+[tool.pixi.dependencies]
+pinocchio = ">=4.0.0,<5"
