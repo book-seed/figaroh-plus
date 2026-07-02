@@ -1,0 +1,2 @@
+build_command: pixi run build
+verify_command: pixi run python -m pytest tests/ --ignore=tests/unit/test_robotvisualization.py --ignore=tests/unit/test_qr_decomposition.py

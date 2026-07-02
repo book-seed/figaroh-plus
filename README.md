@@ -83,6 +83,32 @@ Run examples with pixi:
 cd figaroh-examples/examples/ur10 && pixi run -e examples python calibration.py
 ```
 
+### Optional: CasADi Backend
+
+The CasADi backend provides analytical gradient/Jacobian/Hessian computation
+for 5-20x faster trajectory optimization.
+
+```bash
+# With pip
+pip install figaroh[casadi]
+
+# With pixi
+pixi install --environment casadi
+
+# With conda
+conda install -c conda-forge casadi pinocchio
+```
+
+Usage:
+```python
+from figaroh.backend import create_backend
+
+# Or enable via config
+from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
+traj = BaseOptimalTrajectory(robot, active_joints, "config.yaml",
+                              backend="casadi")
+```
+
 ---
 
 ## Package Structure

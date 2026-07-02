@@ -7,7 +7,7 @@ name = "figaroh"
 version = "0.4.3"
 description = "A Python toolbox for dynamics identification and geometric calibration of robots and humans"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.8"
 license = { file = "LICENSE" }
 authors = [
     { name = "Thanh D. V. Nguyen", email = "thanhndv212@gmail.com" },
@@ -31,6 +31,10 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Physics",
@@ -51,22 +55,28 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-casadi = [
-    "casadi >=3.7.2",
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+    "mypy",
+    "pre-commit",
 ]
-
-[project.urls]
-Homepage = "https://github.com/book-seed/figaroh-plus"
-Repository = "https://github.com/book-seed/figaroh-plus"
-Issues = "https://github.com/book-seed/figaroh-plus/issues"
-Examples = "https://github.com/book-seed/figaroh-examples"
-
-# Uncomment if you have CLI tools
-# [project.scripts]
-# figaroh = "figaroh.cli:main"
-
-# [project.gui-scripts]
-# figaroh-gui = "figaroh.gui:main"
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-autodoc-typehints",
+]
+examples = [
+    "jupyter",
+    "notebook",
+    "ipywidgets",
+]
+casadi = [
+    "casadi>=3.6.7",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/figaroh"]
@@ -80,6 +90,19 @@ exclude = [
     "models/",
     "docs/build/",
 ]
+
+[project.urls]
+Homepage = "https://github.com/thanhndv212/figaroh-plus"
+Repository = "https://github.com/thanhndv212/figaroh-plus"
+Issues = "https://github.com/thanhndv212/figaroh-plus/issues"
+Examples = "https://github.com/thanhndv212/figaroh-examples"
+
+# Uncomment if you have CLI tools
+# [project.scripts]
+# figaroh = "figaroh.cli:main"
+
+# [project.gui-scripts]
+# figaroh-gui = "figaroh.gui:main"
 
 # =============================================================================
 # Pixi environment configuration
@@ -126,7 +149,7 @@ ipywidgets = "*"
 viser = "*"
 
 [tool.pixi.feature.casadi.dependencies]
-casadi = ">=3.7.2,<4"
+casadi = ">=3.6.7"
 pinocchio = ">=4.0.0,<5"
 
 [tool.pixi.environments]
@@ -138,15 +161,3 @@ casadi = { features = ["core", "dev", "casadi"], solve-group = "default" }
 
 [tool.pixi.dependencies]
 pinocchio = ">=4.0.0,<5"
-
-# =============================================================================
-# Pyright / Pylance configuration
-# =============================================================================
-
-[tool.pyright]
-pythonPath = ".pixi/envs/default/bin/python"
-stubPath = "typings"
-extraPaths = [
-    "figaroh-examples",
-    ".pixi/envs/default/lib/python3.12/site-packages",
-]

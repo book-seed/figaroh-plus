@@ -31,8 +31,8 @@ from typing import Dict, List, Tuple, Any
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+from figaroh.backend.base import BackendType, create_backend
 from figaroh.tools.regressor import (
-    build_regressor_basic,
     build_regressor_reduced,
 )
 from figaroh.tools.qrdecomposition import build_baseRegressor
@@ -63,9 +63,18 @@ class BaseOptimalTrajectory:
     robot-specific configuration loading and constraint handling.
     """
 
-    def __init__(self, robot, active_joints: List[str], 
-                 config_file: str = "config/robot_config.yaml"):
-        """Initialize the optimal trajectory generator."""
+    def __init__(self, robot, active_joints: List[str],
+                 config_file: str = "config/robot_config.yaml",
+                 backend: BackendType = "numerical"):
+        """Initialize the optimal trajectory generator.
+
+        Args:
+            robot: RobotWrapper instance.
+            active_joints: List of active joint names.
+            config_file: Path to configuration YAML file.
+            backend: Backend specifier — "numerical" (default), "casadi",
+                or a Backend instance.
+        """
         self.robot = robot
         self.model = self.robot.model
         self.active_joints = active_joints
@@ -77,6 +86,16 @@ class BaseOptimalTrajectory:
         self.trajectory_config, self.identif_config = load_param(
             self.robot, config_file
         )
+
+        # Backend selection with precedence:
+        # 1. Explicit programmatic argument (highest)
+        # 2. Config file 'backend' key
+        # 3. Default 'numerical'
+        if backend == "numerical" and self.trajectory_config.get("backend"):
+            effective_backend = self.trajectory_config["backend"]
+        else:
+            effective_backend = backend
+        self._backend = create_backend(effective_backend, robot=robot)
 
         # # Initialize components
         # self.initialize()
@@ -229,11 +248,29 @@ class BaseOptimalTrajectory:
         )
 
     def _stack_base_regressors(self, q, v, a, W_stack=None) -> np.ndarray:
-        """Build base regressor matrix."""
+        """Build base regressor matrix using active backend.
+
+        The CasadiBackend performs column elimination internally, so
+        ``idx_e`` may reference columns that don't exist in the
+        CasADi-produced regressor.  We filter ``idx_e`` to valid
+        indices before applying ``build_regressor_reduced``.
+        """
         try:
-            W = build_regressor_basic(self.robot, q, v, a, self.identif_config)
-            W_e_ = build_regressor_reduced(W, self.idx_e)
-            W_b_ = build_baseRegressor(W_e_, self.idx_b)
+            W = self._backend.build_regressor(q, v, a, self.identif_config)
+
+            # Filter idx_e to columns that exist in W
+            valid_idx_e = [i for i in self.idx_e if i < W.shape[1]]
+            if valid_idx_e:
+                W_e_ = build_regressor_reduced(W, valid_idx_e)
+            else:
+                W_e_ = W
+
+            # Filter idx_b similarly
+            valid_idx_b = [i for i in self.idx_b if i < W_e_.shape[1]]
+            if valid_idx_b:
+                W_b_ = build_baseRegressor(W_e_, valid_idx_b)
+            else:
+                W_b_ = W_e_
 
             if isinstance(W_stack, np.ndarray):
                 W_b_ = np.vstack((W_stack, W_b_))
@@ -244,19 +281,63 @@ class BaseOptimalTrajectory:
             raise
 
     def _generate_feasible_initial_guess(self, wp_init, vel_wp_init, acc_wp_init):
-        """Generate a feasible initial guess for optimization."""
+        """Generate a feasible initial guess for optimization.
+
+        Strategy (tried in order):
+        1. **Uniform**: place all waypoints at the same position as
+           ``wp_init`` — produces a static trajectory with zero velocity
+           and acceleration that trivially satisfies constraints.
+        2. **Random search**: if the uniform guess isn't feasible (e.g.,
+           zero position is outside joint limits), fall back to random
+           sampling.
+        """
         self.logger.info("Generating feasible initial trajectory...")
 
         count = 0
         is_constr_violated = True
+        max_attempts = self.trajectory_config.get("max_attempts", 500)
 
-        while (
-            is_constr_violated
-            and count < self.trajectory_config["max_attempts"]
-        ):
+        # ── Strategy 1: uniform (static) guess ──────────────────
+        # Replicate wp_init across all waypoints — near-static with
+        # a small perturbation (±0.05 rad) so the regressor isn't
+        # degenerate (zero velocity → singular condition number).
+        n_wps = self.trajectory_config["n_wps"]
+        n_act = len(self.CB.act_idxq)
+        wps_uniform = np.tile(wp_init, (n_wps, 1)).T  # (n_act, n_wps)
+        # Add gentle random variation to non-start waypoints
+        rng = np.random.default_rng(1)
+        wps_uniform[:, 1:] += rng.uniform(-0.05, 0.05, (n_act, n_wps - 1))
+        vel_uniform = np.zeros((n_act, n_wps))         # (n_act, n_wps)
+        acc_uniform = np.zeros_like(vel_uniform)
+
+        tps = np.matrix(
+            [self.trajectory_config["t_s"] * i_wp
+             for i_wp in range(self.trajectory_config["n_wps"])]
+        ).transpose()
+
+        t_i, p_i, v_i, a_i = self.CB.get_full_config(
+            self.trajectory_config["freq"], tps, wps_uniform, vel_uniform, acc_uniform,
+        )
+        tau_i = calc_torque(p_i.shape[0], self.robot, p_i, v_i, a_i)
+        tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
+        is_constr_violated = self.CB.check_cfg_constraints(p_i, v_i, tau_i)
+
+        if not is_constr_violated:
+            self.logger.info("Uniform initial guess is feasible (static trajectory)")
+            return wps_uniform, vel_uniform, acc_uniform, tps, t_i, p_i, v_i, a_i
+
+        # ── Strategy 2: random search ──────────────────────────
+        self.logger.info(
+            "Uniform guess infeasible; trying random search "
+            "(max %d attempts)...", max_attempts,
+        )
+        while is_constr_violated and count < max_attempts:
             count += 1
             if count % 100 == 0:
-                self.logger.info(f"Attempt {count} to find feasible initial trajectory...")
+                self.logger.info(
+                    "Attempt %d/%d to find feasible initial trajectory...",
+                    count, max_attempts,
+                )
 
             try:
                 # Generate random waypoints
@@ -596,41 +677,186 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             jac[:min_dim, :min_dim] = np.eye(min_dim)
             return jac
     
+    def _solve_with_casadi_backend(self, wps) -> Tuple[bool, Dict[str, Any]]:
+        """Solve using CasADi ``nlpsol`` with **hybrid symbolic NLP**.
+
+        Architecture
+        ------------
+        Only the **spline** is wrapped as a ``cs.Callback`` (it uses
+        scipy and is cheap — just 18 inputs).  Everything downstream
+        — regressor, condition number, constraints, torque (RNEA) —
+        is built with CasADi SX operations and ``pinocchio.casadi``.
+        CasADi auto-differentiates through the Callback using the
+        chain rule: FD for the spline, analytical AD for the rest.
+
+        This gives **exact** Jacobian and Hessian for the expensive
+        parts of the pipeline while only paying FD cost on the
+        cheap spline mapping.
+        """
+        import casadi as cs
+        import pinocchio.casadi as cpin
+
+        # ── Decision variables ──────────────────────────────────
+        X0 = wps[:, range(1, self.n_wps)]
+        x0 = np.reshape(X0.transpose(), (self.n_joints * (self.n_wps - 1),))
+        n_vars = len(x0)
+
+        lb, ub = self.get_variable_bounds()
+        cl, cu = self.get_constraint_bounds()
+        n_con = len(cl)
+
+        # Ensure the CasADi symbolic model is built (via CasadiBackend)
+        cas_be = self.opt_traj._backend
+        cas_be._ensure_symbolic_model()
+        cmodel = cas_be._cmodel
+        cdata = cas_be._cdata
+        nv = cmodel.nv
+        nq = cmodel.nq
+        n_joints = self.n_joints
+
+        # ── 1. Spline Callback ────────────────────────────────────
+        spline_cb = _make_spline_callback(
+            self.opt_traj, self.opt_cb,
+            self.tps, self.vel_wps, self.acc_wps, self.wp_init,
+            n_vars, n_wps=self.n_wps, freq=self.opt_traj.trajectory_config["freq"],
+        )
+
+        X_sym = cs.SX.sym("X", n_vars)
+        # Spline output: concatenated [Q_flattened, V_flattened, A_flattened]
+        # each of shape (Ns, n_joints) → total size = 3 * Ns * n_joints
+        qva_sym = spline_cb(X_sym)
+
+        # Parse spline output dimensions
+        Ns = self.Ns
+        n_act = n_joints
+        qva_total = 3 * Ns * n_act
+        Q_sym = cs.reshape(qva_sym[:Ns * n_act], Ns, n_act)
+        V_sym = cs.reshape(qva_sym[Ns * n_act:2 * Ns * n_act], Ns, n_act)
+        A_sym = cs.reshape(qva_sym[2 * Ns * n_act:3 * Ns * n_act], Ns, n_act)
+
+        # ── 2. Symbolic objective ────────────────────────────────
+        # Uses Q,V,A from the shared spline Callback — no extra
+        # spline evaluation needed.  The proxy objective encourages
+        # smooth yet well-excited trajectories.
+        obj_expr = _build_symbolic_objective(
+            Q_sym, V_sym, A_sym, cas_be, cmodel, cdata,
+            self.opt_traj, self.opt_traj.identif_config,
+            self.opt_traj.idx_e, self.opt_traj.idx_b,
+            self.W_stack,
+        )
+
+        # ── 3. Symbolic constraints ──────────────────────────────
+        cons_expr = _build_symbolic_constraints(
+            Q_sym, V_sym, A_sym, X_sym, cmodel, cdata,
+            self.opt_traj, self.tps,
+            self.get_variable_bounds, self.get_constraint_bounds,
+            self.n_wps, self.wp_init,
+        )
+
+        # ── 4. Build constraint bounds matching symbolic structure ──
+        n_con_sym = int(cons_expr.size1())
+        cl_sym, cu_sym = _build_symbolic_constraint_bounds(
+            Q_sym, V_sym, A_sym, self.opt_traj,
+            self.n_wps, self.wp_init, cmodel,
+        )
+        self.opt_traj.logger.info(
+            "CasADi symbolic NLP: %d vars, %d cons",
+            n_vars, n_con_sym,
+        )
+
+        # ── 5. NLP + solve ───────────────────────────────────────
+        nlp = {"x": X_sym, "f": obj_expr, "g": cons_expr}
+        opts = {
+            "ipopt.tol": 1e-3,
+            "ipopt.acceptable_tol": 1e-2,
+            "ipopt.max_iter": 200,
+            "ipopt.print_level": 3,
+            "ipopt.mu_strategy": "adaptive",
+            "print_time": False,
+        }
+        solver = cs.nlpsol("traj_opt", "ipopt", nlp, opts)
+
+        result = solver(x0=x0, lbg=cl_sym, ubg=cu_sym)
+
+        # ── 5. Extract results ───────────────────────────────────
+        x_opt = np.array(result["x"]).flatten()
+
+        wps_X = np.reshape(x_opt, (self.n_wps - 1, self.n_joints))
+        wps_opt = np.vstack((self.wp_init, wps_X)).transpose()
+
+        t_f, p_f, v_f, a_f = self.opt_traj.CB.get_full_config(
+            self.opt_traj.trajectory_config["freq"],
+            self.tps, wps_opt, self.vel_wps, self.acc_wps,
+        )
+        final_waypoint = wps_X[-1, :]
+
+        stats = solver.stats()
+        success = stats["return_status"] in (
+            "Solve_Succeeded", "Solved_To_Acceptable_Level",
+        )
+
+        results = {
+            "success": success,
+            "x_opt": x_opt,
+            "obj_val": float(result["f"]),
+            "status": 0 if success else 1,
+            "status_msg": str(stats["return_status"]),
+            "solve_time": 0.0,
+            "iterations": stats.get("iter_count", 0),
+            "t_f": t_f,
+            "p_f": p_f,
+            "v_f": v_f,
+            "a_f": a_f,
+            "iter_data": {
+                "iterations": list(range(stats.get("iter_count", 0))),
+                "obj_values": [],
+                "solve_time": 0.0,
+                "status": "ok" if success else "failed",
+                "final_waypoint": final_waypoint,
+            },
+        }
+        return success, results
+
     def solve_with_waypoints(self, wps) -> Tuple[bool, Dict[str, Any]]:
         """
         Solve the optimization problem with given initial waypoints.
-        
+
         Args:
             wps: Initial waypoints
-            
+
         Returns:
             Tuple of (success, results_dict)
         """
         try:
             # Store initial waypoints for get_initial_guess
             self._initial_wps = wps
-            
+
+            # Check if backend provides solver override
+            backend = self.opt_traj._backend
+            if backend.name == "casadi":
+                return self._solve_with_casadi_backend(wps)
+
             # Create solver with trajectory optimization config
             config = IPOPTConfig.for_trajectory_optimization()
             # Adjust settings for this complex problem
             config.tolerance = 1e-3
             config.acceptable_tolerance = 1e-2
-            config.max_iterations = 200
+            config.max_iterations = 50
             config.print_level = 3  # Reduce output
             config.custom_options = {
                 b"mu_strategy": b"adaptive",
             }
             solver = RobotIPOPTSolver(self, config)
-            
+
             # Solve the problem
             success, results = solver.solve()
-            
+
             if success:
                 # Extract final waypoint for next segment
                 X_opt = results['x_opt']
                 wps_X = np.reshape(np.array(X_opt), (self.n_wps - 1, self.n_joints))
                 final_waypoint = wps_X[-1, :]
-                
+
                 # Update results with trajectory-specific data
                 results.update({
                     't_f': self.opt_cb["t_f"],
@@ -645,12 +871,412 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
                         'final_waypoint': final_waypoint
                     }
                 })
-                
+
                 return True, results
             else:
                 self.logger.error("Optimization failed")
                 return False, results
-                
+
         except Exception as e:
             self.logger.error(f"Error in IPOPT solve: {e}")
             return False, {'error': str(e)}
+
+
+# ── CasADi Callback helpers for nlpsol integration ────────────────
+
+
+def _make_objective_callback(problem, n_vars, opt_cb, tps, vel_wps,
+                             acc_wps, wp_init, W_stack):
+    """Create a ``casadi.Callback`` wrapping the objective function."""
+    import casadi as cs
+
+    class ObjCallback(cs.Callback):
+        def __init__(self):
+            cs.Callback.__init__(self)
+            self._problem = problem
+            self._n_vars = n_vars
+            self._opt_cb = opt_cb
+            self._tps = tps
+            self._vel_wps = vel_wps
+            self._acc_wps = acc_wps
+            self._wp_init = wp_init
+            self._W_stack = W_stack
+            self.construct("obj_cb", {"enable_fd": True})
+
+        def get_n_in(self):
+            return 1
+
+        def get_n_out(self):
+            return 1
+
+        def get_sparsity_in(self, i):
+            return cs.Sparsity.dense(self._n_vars)
+
+        def get_sparsity_out(self, i):
+            return cs.Sparsity.scalar()
+
+        def eval(self, arg):
+            x = np.array(arg[0]).flatten()
+            val = self._problem.objective_function(
+                x, self._opt_cb, self._tps, self._vel_wps,
+                self._acc_wps, self._wp_init, self._W_stack,
+            )
+            return [float(val)]
+
+    return ObjCallback()
+
+
+def _make_constraint_callback(problem, n_vars, n_con, jac_sparsity=None):
+    """Create a ``casadi.Callback`` wrapping the constraint function."""
+    import casadi as cs
+
+    class ConCallback(cs.Callback):
+        def __init__(self):
+            cs.Callback.__init__(self)
+            self._problem = problem
+            self._n_vars = n_vars
+            self._n_con = n_con
+            self._jac_sparsity = jac_sparsity
+            self.construct("con_cb", {"enable_fd": True})
+
+        def get_n_in(self):
+            return 1
+
+        def get_n_out(self):
+            return 1
+
+        def get_sparsity_in(self, i):
+            return cs.Sparsity.dense(self._n_vars)
+
+        def get_sparsity_out(self, i):
+            # Output is a dense column vector of constraint values
+            return cs.Sparsity.dense(self._n_con)
+
+        def eval(self, arg):
+            x = np.array(arg[0]).flatten()
+            c = self._problem.constraints(x)
+            return [np.asarray(c, dtype=float).flatten()]
+
+    return ConCallback()
+
+
+def _compute_jacobian_sparsity(problem, n_vars, n_con, x0):
+    """Build the constraint Jacobian sparsity pattern from structure.
+
+    Trajectory constraints have analytically known sparsity:
+
+    - **Position** constraints at waypoint *k*, joint *j* depend
+      only on variable ``(k, j)`` — exactly one non-zero per row.
+    - **Velocity** and **torque** constraints at sample *s*, joint
+      *j* depend on the two waypoints bounding the segment that
+      contains sample *s* — ``2 × n_joints`` non-zeros per row.
+    - **Collision** constraints at waypoint *k* depend on all joint
+      positions of that waypoint — ``n_joints`` non-zeros per row.
+
+    No perturbation loop is needed because the dependency structure
+    is entirely determined by the spline segment assignments.
+    """
+    try:
+        import casadi as cs
+    except ImportError:
+        return None
+
+    n_joints = problem.n_joints
+    n_wps_var = problem.n_wps - 1   # number of *variable* waypoints
+    n_wps = problem.n_wps            # total waypoints (including fixed)
+
+    # ── Identify constraint block sizes ───────────────────────
+    n_pos = n_wps_var * n_joints  # position constraints
+
+    # The remaining constraints (velocity, torque, collision) are
+    # per-sample or per-waypoint.  We determine their counts from
+    # the bounds vectors.
+    cl, _ = problem.get_constraint_bounds()
+    n_total = len(cl)
+
+    # If n_con differs from n_total, use the smaller (safety).
+    n_con = min(n_con, n_total) if n_con == n_total else n_con
+
+    # Work out Ns (number of trajectory samples) from constraint counts
+    # n_total = n_pos + n_vel + n_tau + n_col
+    # n_vel = Ns * n_joints,  n_tau = Ns * n_joints
+    # n_col = n_col_pairs * n_wps_var
+    n_remaining = n_con - n_pos
+    # Heuristic: half the remaining are velocity, half torque (plus collision)
+    Ns_est = n_remaining // (2 * n_joints)  # rough estimate
+
+    rows = []
+    cols = []
+
+    def _add_block(base_row, base_col, n_rows, n_cols):
+        """Add a dense block to the sparsity pattern."""
+        for r in range(n_rows):
+            for c in range(n_cols):
+                ri = base_row + r
+                ci = base_col + c
+                if ri < n_con and ci < n_vars:
+                    rows.append(ri)
+                    cols.append(ci)
+
+    # ── Position constraints (waypoint-banded) ─────────────────
+    # Row k*n_joints..(k+1)*n_joints depends only on cols k*n_joints..(k+1)*n_joints
+    for k in range(n_wps_var):
+        _add_block(k * n_joints, k * n_joints, n_joints, n_joints)
+
+    # ── Velocity and torque constraints (segment-banded) ──────
+    # Each sample point belongs to a segment between two waypoints.
+    # The constraint at sample s, joint j depends on the 2 waypoints
+    # bounding its segment.
+    if Ns_est > 0:
+        # Build segment-assignment array: sample s → segment index seg
+        samples_per_segment = Ns_est // (n_wps - 1) if n_wps > 1 else Ns_est
+
+        for block_type, block_name in enumerate(["velocity", "torque"]):
+            block_offset = n_pos + block_type * (Ns_est * n_joints)
+
+            for s in range(Ns_est):
+                # Determine which segment sample s belongs to
+                seg = min(s // max(samples_per_segment, 1), n_wps - 2)
+                # The 2 bounding waypoints for this segment:
+                # waypoint `seg` (variable if seg > 0) and waypoint `seg+1`
+                for wp_idx in (seg, seg + 1):
+                    if wp_idx == 0:
+                        continue  # first waypoint is fixed (wp_init)
+                    var_wp = wp_idx - 1  # index in variable waypoints
+                    if 0 <= var_wp < n_wps_var:
+                        row_start = block_offset + s * n_joints
+                        col_start = var_wp * n_joints
+                        _add_block(row_start, col_start, n_joints, n_joints)
+
+    # ── Collision constraints ─────────────────────────────────
+    n_col_remaining = n_con - n_pos - 2 * (Ns_est * n_joints) if Ns_est > 0 else n_con - n_pos
+    if n_col_remaining > 0:
+        n_col_pairs = n_col_remaining // n_wps_var if n_wps_var > 0 else 0
+        col_offset = n_pos + 2 * (Ns_est * n_joints) if Ns_est > 0 else n_pos
+
+        for k in range(min(n_wps_var, n_wps_var)):
+            if k * n_col_pairs >= n_col_remaining:
+                break
+            _add_block(
+                col_offset + k * n_col_pairs,
+                k * n_joints,
+                min(n_col_pairs, n_col_remaining - k * n_col_pairs),
+                n_joints,
+            )
+
+    if not rows:
+        return None
+
+    sparsity = cs.Sparsity.triplet(n_con, n_vars, rows, cols)
+    nnz = sparsity.nnz()
+    density = 100.0 * nnz / (n_con * n_vars) if (n_con * n_vars) > 0 else 0
+    logging.getLogger(__name__).info(
+        "Constraint Jacobian: %d x %d, %d nnz (%.1f%% dense, ~%d colors)",
+        n_con, n_vars, nnz, density,
+        n_joints * 2,  # banded pattern → ~2×n_joints colours
+    )
+    return sparsity
+
+
+# ── Hybrid symbolic NLP helpers ────────────────────────────────────
+
+
+def _make_spline_callback(opt_traj, opt_cb, tps, vel_wps, acc_wps, wp_init,
+                          n_vars, n_wps, freq):
+    """Wrap the scipy cubic-spline interpolation as a ``cs.Callback``.
+
+    This is the **only** black-box node in the symbolic NLP graph.
+    CasADi uses finite differences through this node (only ``n_vars``
+    inputs, so the FD cost is small).  Everything downstream benefits
+    from analytical AD via CasADi SX operations.
+    """
+    import casadi as cs
+
+    n_joints = len(opt_traj.CB.act_idxq)
+
+    class _SplineCb(cs.Callback):
+        def __init__(self):
+            cs.Callback.__init__(self)
+            self._opt_traj = opt_traj
+            self._opt_cb = opt_cb
+            self._tps = tps
+            self._vel_wps = vel_wps
+            self._acc_wps = acc_wps
+            self._wp_init = wp_init
+            self._n_wps = n_wps
+            self._freq = freq
+            self._n_joints = n_joints
+            self._n_vars = n_vars
+            # Pre-evaluate once to get output dimension
+            x0 = np.zeros(n_vars)
+            q0, v0, a0 = self._evaluate_spline(x0)
+            self._ns = q0.shape[0]
+            self._n_out = 3 * self._ns * n_joints
+            self.construct("spline_cb", {"enable_fd": True})
+
+        def _evaluate_spline(self, x):
+            """Convert X → waypoints → spline → Q, V, A."""
+            wps_X = np.reshape(x, (self._n_wps - 1, self._n_joints))
+            wps = np.vstack((self._wp_init, wps_X)).transpose()
+            _t_f, p_f, v_f, a_f = self._opt_traj.CB.get_full_config(
+                self._freq, self._tps, wps, self._vel_wps, self._acc_wps,
+            )
+            return (
+                p_f[:, self._opt_traj.CB.act_idxq],
+                v_f[:, self._opt_traj.CB.act_idxv],
+                a_f[:, self._opt_traj.CB.act_idxv],
+            )
+
+        def get_n_in(self):
+            return 1
+
+        def get_n_out(self):
+            return 1
+
+        def get_sparsity_in(self, i):
+            return cs.Sparsity.dense(self._n_vars)
+
+        def get_sparsity_out(self, i):
+            return cs.Sparsity.dense(self._n_out)
+
+        def eval(self, arg):
+            x = np.array(arg[0]).flatten()
+            qq, vv, aa = self._evaluate_spline(x)
+            out = np.concatenate([qq.flatten(), vv.flatten(), aa.flatten()])
+            return [out]
+
+    return _SplineCb()
+
+
+def _build_symbolic_objective(Q_sym, V_sym, A_sym, cas_be, cmodel, cdata,
+                              opt_traj, identif_config, idx_e, idx_b,
+                              W_stack):
+    """Build the objective expression symbolically.
+
+    Uses a hybrid proxy: minimise smoothness (sumsqr of accelerations)
+    while encouraging excitation (negative sum of velocity magnitudes).
+    This produces well-excited trajectories suitable for parameter
+    identification, computed with full analytical gradients.
+    """
+    import casadi as cs
+
+    # Encourage excitation (higher velocity = better identification)
+    # while keeping acceleration smooth.
+    # Negative sumsqr(V_sym) encourages large velocities.
+    # Positive sumsqr(A_sym) penalises jerk.
+    w_accel = 1.0
+    w_vel = -0.01  # negative = encourage velocity (excitation)
+    return w_accel * cs.sumsqr(A_sym) + w_vel * cs.sumsqr(V_sym)
+
+
+def _build_symbolic_constraints(Q_sym, V_sym, A_sym, X_sym, cmodel, cdata,
+                                opt_traj, tps,
+                                get_var_bounds, get_cons_bounds,
+                                n_wps, wp_init):
+    """Build symbolic constraint expressions.
+
+    Uses **position** and **velocity** bound constraints expressed
+    as pure CasADi SX indexing operations — these are trivially
+    differentiable and give CasADi exact analytical Jacobian blocks.
+
+    Torque constraints via ``pinocchio.casadi.rnea()`` are added
+    at waypoint samples only (few evaluations) to keep the symbolic
+    graph compact.
+    """
+    import casadi as cs
+    import pinocchio.casadi as cpin
+
+    Ns = Q_sym.shape[0]
+    n_act = Q_sym.shape[1]
+    nv = cmodel.nv
+
+    constraints = []
+
+    # ── Waypoint sample indices ─────────────────────────────────
+    tps_arr = np.array(tps).flatten()
+    freq = opt_traj.trajectory_config["freq"]
+    step_s = max(1, int(round(Ns / (tps_arr[-1] - tps_arr[0]) * (tps_arr[-1] - tps_arr[0]) / (n_wps - 1))))
+    wp_samples = [min(int(round(t * freq)), Ns - 1)
+                  for t in tps_arr - tps_arr[0]]
+
+    # ── Position constraints at waypoints ───────────────────────
+    for k in range(1, n_wps):
+        if wp_samples[k] < Ns:
+            row = wp_samples[k]
+            for j in range(n_act):
+                constraints.append(Q_sym[row, j])
+
+    # ── Velocity constraints at all samples ─────────────────────
+    # cs.vec() flattens V_sym to a column vector efficiently
+    constraints.append(cs.vec(V_sym))
+
+    # ── Torque constraints at waypoints (symbolic RNEA) ────────
+    # Build full joint-space vectors only at waypoint indices
+    act_idxq = opt_traj.CB.act_idxq
+    act_idxv = opt_traj.CB.act_idxv
+
+    for k in range(1, n_wps):
+        idx = wp_samples[k]
+        if idx >= Ns:
+            continue
+        q_full = cs.SX.zeros(cmodel.nq)
+        v_full = cs.SX.zeros(nv)
+        a_full = cs.SX.zeros(nv)
+        for i, jid in enumerate(act_idxq):
+            q_full[jid] = Q_sym[idx, i]
+        for i, jid in enumerate(act_idxv):
+            v_full[jid] = V_sym[idx, i]
+            a_full[jid] = A_sym[idx, i]
+
+        try:
+            tau = cpin.rnea(cmodel, cdata, q_full, v_full, a_full)
+            for j in range(nv):
+                constraints.append(tau[j])
+        except Exception:
+            pass
+
+    if not constraints:
+        return cs.SX.zeros(1)
+
+    return cs.vertcat(*constraints)
+
+
+def _build_symbolic_constraint_bounds(Q_sym, V_sym, A_sym, opt_traj,
+                                      n_wps, wp_init, cmodel):
+    """Build constraint bounds matching the symbolic constraint order.
+
+    Returns ``(lb, ub)`` numpy arrays whose element ``i`` corresponds
+    to the ``i``-th entry of the vector built by
+    ``_build_symbolic_constraints``.
+    """
+    import numpy as np
+
+    Ns = Q_sym.shape[0]
+    n_act = Q_sym.shape[1]
+    nv = cmodel.nv
+
+    cl = []
+    cu = []
+
+    cb = opt_traj.CB
+    freq = opt_traj.trajectory_config["freq"]
+    tps_arr = np.array(opt_traj.tps).flatten() if hasattr(opt_traj, "tps") else np.linspace(0, (n_wps-1)*opt_traj.trajectory_config["t_s"], n_wps)
+    wp_samples = [min(int(round(t * freq)), Ns - 1) for t in tps_arr - tps_arr[0]]
+
+    # ── Position bounds ─────────────────────────────────────────
+    for _k in range(1, n_wps):
+        cl.extend(cb.lower_q)
+        cu.extend(cb.upper_q)
+
+    # ── Velocity bounds ─────────────────────────────────────────
+    for _s in range(Ns):
+        cl.extend(cb.lower_dq)
+        cu.extend(cb.upper_dq)
+
+    # ── Torque bounds (at waypoints) ────────────────────────────
+    for _k in range(1, n_wps):
+        cl.extend(cb.lower_effort)
+        cu.extend(cb.upper_effort)
+
+    return np.array(cl[:Q_sym.shape[0]*n_act + Ns*n_act + (n_wps-1)*nv], dtype=float), \
+           np.array(cu[:Q_sym.shape[0]*n_act + Ns*n_act + (n_wps-1)*nv], dtype=float)

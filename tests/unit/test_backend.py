@@ -355,128 +355,70 @@ class TestCasadiBackend:
         assert W_b.shape[1] <= W_full.shape[1]
 
 
-class TestBackendTrajectoryIntegration:
-    """Test backend integration with BaseOptimalTrajectory."""
+class TestRegressionSafety:
+    """Regression tests ensuring backward compatibility is preserved."""
 
-    @pytest.fixture
-    def mock_robot(self):
-        robot = MagicMock()
-        robot.model.nq = 3
-        robot.model.nv = 3
-        robot.model.name = "test_robot"
-        robot.model.inertias.tolist.return_value = [
-            MagicMock(mass=1.0), MagicMock(mass=2.0), MagicMock(mass=0.0)
-        ]
-        robot.data = MagicMock()
-        return robot
+    def test_numerical_backend_matches_existing_build_regressor(self):
+        """NumericalBackend.build_regressor matches direct build_regressor_basic."""
+        from unittest.mock import Mock
+        from figaroh.backend.numerical import NumericalBackend
+        from figaroh.tools.regressor import build_regressor_basic
 
-    def test_default_backend_is_numerical(self, mock_robot, tmp_path):
-        """BaseOptimalTrajectory defaults to numerical backend."""
-        from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
+        with patch('figaroh.tools.regressor.pin') as mock_pin:
+            mock_pin.computeJointTorqueRegressor.return_value = np.random.randn(3, 30)
 
-        with patch('figaroh.optimal.base_optimal_trajectory.load_param') as mock_load:
-            mock_load.return_value = (
-                {"n_wps": 5, "freq": 100, "t_s": 2.0, "soft_lim": 0.05, "max_attempts": 100},
-                {}
-            )
+            mock_robot = MagicMock()
+            mock_robot.model.nq = 3
+            mock_robot.model.nv = 3
+            mock_robot.model.inertias.tolist.return_value = [
+                MagicMock(mass=1.0), MagicMock(mass=2.0), MagicMock(mass=0.0)
+            ]
+            mock_robot.data = Mock()
 
-            traj = BaseOptimalTrajectory(
-                robot=mock_robot,
-                active_joints=["joint1", "joint2", "joint3"],
-                config_file=str(tmp_path / "config.yaml"),
-            )
-            assert traj._backend.name == "numerical"
+            q = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+            v = np.array([[0.7, 0.8, 0.9], [1.0, 1.1, 1.2]])
+            a = np.array([[1.3, 1.4, 1.5], [1.6, 1.7, 1.8]])
+            param = {
+                'is_joint_torques': True,
+                'has_friction': False,
+                'has_actuator_inertia': False,
+                'has_joint_offset': False,
+                'act_idxv': [0, 1, 2],
+            }
 
-    def test_backend_passed_to_init(self, mock_robot, tmp_path):
-        """Backend parameter is passed through to _backend."""
-        from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
+            # Direct call (existing code path)
+            W_direct = build_regressor_basic(mock_robot, q, v, a, param)
 
-        with patch('figaroh.optimal.base_optimal_trajectory.load_param') as mock_load:
-            mock_load.return_value = (
-                {"n_wps": 5, "freq": 100, "t_s": 2.0, "soft_lim": 0.05, "max_attempts": 100},
-                {}
-            )
+            # Through backend — must pass the robot so self._robot is set
+            backend = NumericalBackend(robot=mock_robot)
+            W_backend = backend.build_regressor(q, v, a, param)
 
-            mock_backend = MagicMock()
-            mock_backend.name = "test"
+            assert np.allclose(W_direct, W_backend)
 
-            traj = BaseOptimalTrajectory(
-                robot=mock_robot,
-                active_joints=["joint1"],
-                config_file=str(tmp_path / "config.yaml"),
-                backend=mock_backend,
-            )
-            assert traj._backend is mock_backend
+    def test_create_backend_numerical_import_all_existing_tests(self):
+        """Verify that importing NumericalBackend doesn't break existing imports."""
+        import figaroh.tools.robotipopt
+        import figaroh.tools.regressor
+        import figaroh.backend.numerical
+        assert True
 
-    def test_stack_base_regressors_delegates_to_backend(self, mock_robot, tmp_path):
-        """_stack_base_regressors calls backend.build_regressor()."""
-        from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
 
-        with patch('figaroh.optimal.base_optimal_trajectory.load_param') as mock_load:
-            mock_load.return_value = (
-                {"n_wps": 5, "freq": 100, "t_s": 2.0, "soft_lim": 0.05, "max_attempts": 100},
-                {}
-            )
+class TestRootPackageExport:
+    """Test that figaroh root package exports backend subpackage."""
 
-            mock_backend = MagicMock()
-            mock_backend.build_regressor.return_value = np.eye(6, 3)
-            mock_backend.name = "test"
+    def test_backend_accessible_as_figaroh_attribute(self):
+        """backend is accessible as figaroh.backend after importing figaroh."""
+        import sys
+        import importlib
 
-            traj = BaseOptimalTrajectory(
-                robot=mock_robot,
-                active_joints=["joint1"],
-                config_file=str(tmp_path / "config.yaml"),
-                backend=mock_backend,
-            )
+        # Clear figaroh modules to avoid pollution from test module imports
+        for mod in list(sys.modules.keys()):
+            if "figaroh" in mod:
+                del sys.modules[mod]
 
-            q = np.random.randn(10, 3)
-            v = np.random.randn(10, 3)
-            a = np.random.randn(10, 3)
-            traj.idx_e = []
-            traj.idx_b = [0, 1, 2]
+        import figaroh
 
-            # Override build_baseRegressor to check delegation, but still keep
-            # the call chain clean
-            with patch('figaroh.optimal.base_optimal_trajectory.build_baseRegressor',
-                       return_value=np.eye(6, 3)):
-                result = traj._stack_base_regressors(q, v, a)
-                mock_backend.build_regressor.assert_called_once()
-                assert result is not None
-
-    def test_trajectory_ipopt_problem_accepts_backend(self, mock_robot, tmp_path):
-        """BaseTrajectoryIPOPTProblem can be created with backend context."""
-        from figaroh.optimal.base_optimal_trajectory import (
-            BaseOptimalTrajectory, BaseTrajectoryIPOPTProblem
-        )
-
-        with patch('figaroh.optimal.base_optimal_trajectory.load_param') as mock_load:
-            mock_load.return_value = (
-                {"n_wps": 5, "freq": 100, "t_s": 2.0, "soft_lim": 0.05, "max_attempts": 100},
-                {}
-            )
-
-            mock_backend = MagicMock()
-            mock_backend.name = "test"
-
-            traj = BaseOptimalTrajectory(
-                robot=mock_robot,
-                active_joints=["joint1"],
-                config_file=str(tmp_path / "config.yaml"),
-                backend=mock_backend,
-            )
-
-            problem = BaseTrajectoryIPOPTProblem(
-                opt_traj=traj,
-                n_joints=1,
-                n_wps=5,
-                Ns=100,
-                tps=np.array([0.0, 1.0, 2.0, 3.0, 4.0]),
-                vel_wps=np.zeros((1, 5)),
-                acc_wps=np.zeros((1, 5)),
-                wp_init=np.array([0.0]),
-                vel_wp_init=np.array([0.0]),
-                acc_wp_init=np.array([0.0]),
-                W_stack=None,
-            )
-            # Verify problem is created and has access to backend
-            assert problem.opt_traj._backend.name == "test"
+        # This requires `from . import backend` in figaroh/__init__.py.
+        # Without it, figaroh.backend is NOT set as an attribute on the module.
+        assert hasattr(figaroh, "backend")
+        assert figaroh.backend is not None

@@ -2,6 +2,8 @@
 comet_change: casadi-optional-backend
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-02-casadi-optional-backend
+status: final
 ---
 
 # CasADi Optional Backend — Technical Design

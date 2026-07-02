@@ -2,11 +2,12 @@
 change: casadi-optional-backend
 design-doc: docs/superpowers/specs/2026-07-02-casadi-optional-backend-design.md
 base-ref: 8d4b820138840289e3d2aadf73b80c1695a64dc4
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 # CasADi Optional Backend — 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 为 FIGAROH 的最优轨迹生成引入策略模式后端架构，允许用户在现有的数值路径（默认）和新的基于 CasADi 的解析符号路径之间切换，实现 5-20 倍的梯度/Jacobian/Hessian 计算加速。
 
@@ -23,6 +24,7 @@ base-ref: 8d4b820138840289e3d2aadf73b80c1695a64dc4
 - 所有变更基于 base-ref `8d4b820138840289e3d2aadf73b80c1695a64dc4`
 - TDD：每个 task 先写测试再写实现代码
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ## File Structure
@@ -42,6 +44,7 @@ base-ref: 8d4b820138840289e3d2aadf73b80c1695a64dc4
 | `README.md` | **修改** | CasADi 后端安装和使用说明 |
 | `docs/superpowers/reports/2026-07-02-casadi-optional-backend-adr.md` | **创建** | 架构决策记录 |
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 1: Backend 包和抽象基类
@@ -54,7 +57,7 @@ base-ref: 8d4b820138840289e3d2aadf73b80c1695a64dc4
 **Interfaces:**
 - Produces: `Backend` ABC（`build_regressor`, `gradient`, `jacobian`, `create_solver`, `name`）+ `create_backend()` 工厂 + `BackendType` 类型别名
 
-- [ ] **Step 1: 创建 backend 包目录和 __init__.py**
+- [x] **Step 1: 创建 backend 包目录和 __init__.py**
 
 ```bash
 mkdir -p src/figaroh/backend
@@ -95,7 +98,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 2: 编写 Backend ABC 和工厂函数的测试**
+- [x] **Step 2: 编写 Backend ABC 和工厂函数的测试**
 
 将此代码添加到 `tests/unit/test_backend.py`（先创建此文件）:
 
@@ -181,7 +184,7 @@ class TestCreateBackendFactory:
                 create_backend("casadi")
 ```
 
-- [ ] **Step 3: 实现 Backend ABC 和工厂函数**
+- [x] **Step 3: 实现 Backend ABC 和工厂函数**
 
 创建 `src/figaroh/backend/base.py`:
 
@@ -344,7 +347,7 @@ def _create_casadi_backend(robot=None, **kwargs):
     return CasadiBackend(robot=robot, **kwargs)
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -352,13 +355,14 @@ python -m pytest tests/unit/test_backend.py::TestBackendABC tests/unit/test_back
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/backend/__init__.py src/figaroh/backend/base.py tests/unit/test_backend.py
 git commit -m "feat(backend): add Backend ABC and create_backend factory"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 2: NumericalBackend 实现
@@ -371,7 +375,7 @@ git commit -m "feat(backend): add Backend ABC and create_backend factory"
 - Consumes: `Backend` ABC from `base.py`; `RegressorBuilder` from `tools/regressor.py`
 - Produces: `NumericalBackend` — 向后兼容包装
 
-- [ ] **Step 1: 编写 NumericalBackend 测试**
+- [x] **Step 1: 编写 NumericalBackend 测试**
 
 追加到 `tests/unit/test_backend.py`:
 
@@ -453,7 +457,7 @@ class TestNumericalBackend:
         assert NumericalBackend().name == "numerical"
 ```
 
-- [ ] **Step 2: 运行测试检查失败**
+- [x] **Step 2: 运行测试检查失败**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -461,7 +465,7 @@ python -m pytest tests/unit/test_backend.py::TestNumericalBackend -v
 ```
 预期输出：FAIL（`NumericalBackend` 未定义）。
 
-- [ ] **Step 3: 实现 NumericalBackend**
+- [x] **Step 3: 实现 NumericalBackend**
 
 创建 `src/figaroh/backend/numerical.py`:
 
@@ -591,7 +595,7 @@ class NumericalBackend(Backend):
 
 注意：上方的 `build_regressor` 实现使用 `build_regressor_basic` 简化版。实际上，由于 `RegressorBuilder.__init__` 需要 `robot` 参数，而 `NumericalBackend.__init__` 目前不接收 robot，一种更干净的方式是在 `create_backend()` 中传递 robot 并在 `build_regressor` 中使用。上述实现仅为示意，实施时需与实际代码协调。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -599,13 +603,14 @@ python -m pytest tests/unit/test_backend.py::TestNumericalBackend -v
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/backend/numerical.py tests/unit/test_backend.py
 git commit -m "feat(backend): add NumericalBackend wrapping existing code paths"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 3: CasadiBackend 核心实现
@@ -618,7 +623,7 @@ git commit -m "feat(backend): add NumericalBackend wrapping existing code paths"
 - Consumes: `Backend` ABC; `pinocchio.casadi` 可选依赖
 - Produces: `CasadiBackend` 含符号回归 + 解析导数 + `cs.nlpsol` solver
 
-- [ ] **Step 1: 编写 CasadiBackend 测试**
+- [x] **Step 1: 编写 CasadiBackend 测试**
 
 追加到 `tests/unit/test_backend.py`:
 
@@ -734,7 +739,7 @@ class TestCasadiBackend:
         assert W_b.shape[1] <= W_full.shape[1]
 ```
 
-- [ ] **Step 2: 运行测试检查失败**
+- [x] **Step 2: 运行测试检查失败**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -742,7 +747,7 @@ python -m pytest tests/unit/test_backend.py::TestCasadiBackend -v
 ```
 预期输出：FAIL（`CasadiBackend` 未定义）。
 
-- [ ] **Step 3: 实现 CasadiBackend**
+- [x] **Step 3: 实现 CasadiBackend**
 
 创建 `src/figaroh/backend/casadi.py`:
 
@@ -1069,7 +1074,7 @@ class CasadiBackend(Backend):
         return "casadi"
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -1077,13 +1082,14 @@ python -m pytest tests/unit/test_backend.py::TestCasadiBackend -v
 ```
 预期输出：所有测试 PASS。如果本地环境没有 CasADi，某些集成测试会跳过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/backend/casadi.py tests/unit/test_backend.py
 git commit -m "feat(backend): add CasadiBackend with symbolic regressor and cs.nlpsol"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 4: 更新包导出
@@ -1091,7 +1097,7 @@ git commit -m "feat(backend): add CasadiBackend with symbolic regressor and cs.n
 **Files:**
 - Modify: `src/figaroh/__init__.py`
 
-- [ ] **Step 1: 在 figaroh 根 __init__.py 中添加 backend 导入**
+- [x] **Step 1: 在 figaroh 根 __init__.py 中添加 backend 导入**
 
 修改 `src/figaroh/__init__.py`，在现有 imports 后添加：
 
@@ -1115,7 +1121,7 @@ from . import backend  # NEW
 __version__ = "0.4.3"
 ```
 
-- [ ] **Step 2: 验证导入**
+- [x] **Step 2: 验证导入**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -1127,13 +1133,14 @@ python -c "from figaroh import backend; print(backend.__all__); b = backend.crea
 numerical
 ```
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add src/figaroh/__init__.py
 git commit -m "feat: export backend subpackage from figaroh root"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 5: 整合到 BaseOptimalTrajectory
@@ -1146,7 +1153,7 @@ git commit -m "feat: export backend subpackage from figaroh root"
 - Consumes: `create_backend()` from `backend/base.py`; `Backend` ABC
 - Produces: 修改后的 `BaseOptimalTrajectory.__init__()`、`_stack_base_regressors()`、`BaseTrajectoryIPOPTProblem`
 
-- [ ] **Step 1: 编写 BackendTrajectoryIntegration 测试**
+- [x] **Step 1: 编写 BackendTrajectoryIntegration 测试**
 
 追加到 `tests/unit/test_backend.py`:
 
@@ -1278,7 +1285,7 @@ class TestBackendTrajectoryIntegration:
             assert problem.opt_traj._backend.name == "test"
 ```
 
-- [ ] **Step 2: 修改 BaseOptimalTrajectory.__init__()**
+- [x] **Step 2: 修改 BaseOptimalTrajectory.__init__()**
 
 在 `src/figaroh/optimal/base_optimal_trajectory.py`:
 
@@ -1334,7 +1341,7 @@ def _stack_base_regressors(self, q, v, a, W_stack=None) -> np.ndarray:
         raise
 ```
 
-- [ ] **Step 3: 更新 BaseTrajectoryIPOPTProblem**
+- [x] **Step 3: 更新 BaseTrajectoryIPOPTProblem**
 
 无需显著修改 `BaseTrajectoryIPOPTProblem` 本身的结构，因为 `solve_with_waypoints` 使用的 `RobotIPOPTSolver` 在默认 backend 下保持不变。但是为了 CasADi 后端，我们需要在 `solve_with_waypoints` 中提供条件分支。
 
@@ -1372,7 +1379,7 @@ def _solve_with_casadi_backend(self, wps) -> Tuple[bool, Dict[str, Any]]:
 
 这是因为 CasADi 符号 NLP 的构建需要子类特定的轨迹参数化知识（spline 函数等），无法在基类中通用实现。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -1380,13 +1387,14 @@ python -m pytest tests/unit/test_backend.py::TestBackendTrajectoryIntegration -v
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/optimal/base_optimal_trajectory.py tests/unit/test_backend.py
 git commit -m "feat(optimal): integrate backend into BaseOptimalTrajectory and BaseTrajectoryIPOPTProblem"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 6: 配置解析和后端选择
@@ -1395,7 +1403,7 @@ git commit -m "feat(optimal): integrate backend into BaseOptimalTrajectory and B
 - Modify: `src/figaroh/optimal/config.py`（`load_param` 支持 backend 键）
 - Modify: `src/figaroh/identification/config.py`（可选：添加 backend 键）
 
-- [ ] **Step 1: 在 optimal/config.py 中添加 backend 键解析**
+- [x] **Step 1: 在 optimal/config.py 中添加 backend 键解析**
 
 修改 `load_param()` 函数，在返回的 `trajectory_config` 中包含 `backend` 字段。
 
@@ -1432,7 +1440,7 @@ trajectory_config = {
 }
 ```
 
-- [ ] **Step 2: 在 BaseOptimalTrajectory 中整合配置的 backend**
+- [x] **Step 2: 在 BaseOptimalTrajectory 中整合配置的 backend**
 
 修改 `BaseOptimalTrajectory.__init__()`，使配置文件的 backend 键作为二级选项（低于程序参数）：
 
@@ -1461,13 +1469,14 @@ def __init__(
     self._backend = create_backend(effective_backend, robot=robot)
 ```
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add src/figaroh/optimal/config.py src/figaroh/optimal/base_optimal_trajectory.py
 git commit -m "feat(config): add backend key parsing with programmatic precedence"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 7: 依赖管理和安装配置
@@ -1476,7 +1485,7 @@ git commit -m "feat(config): add backend key parsing with programmatic precedenc
 - Modify: `pyproject.toml`
 - Modify: `README.md`
 
-- [ ] **Step 1: 在 pyproject.toml 中添加 casadi 可选依赖**
+- [x] **Step 1: 在 pyproject.toml 中添加 casadi 可选依赖**
 
 当前 `pyproject.toml` 中的 `casadi` 是全局依赖（第 130 行）。需要将其改为可选依赖以支持"可选后端"的语义。
 
@@ -1505,7 +1514,7 @@ casadi = { features = ["core", "dev", "casadi"], solve-group = "default" }
 
 注意：因为 pinocchio 已经是全局依赖，这一修改主要体现语义：`casadi` feature 表明完整的 CasADi 后端使用需要 CasADi 绑定的 pinocchio。
 
-- [ ] **Step 2: 更新 README.md**
+- [x] **Step 2: 更新 README.md**
 
 在 README 中添加 CasADi 后端安装部分：
 
@@ -1537,7 +1546,7 @@ traj = BaseOptimalTrajectory(robot, active_joints, "config.yaml",
 ```
 ```
 
-- [ ] **Step 3: 验证导入和配置**
+- [x] **Step 3: 验证导入和配置**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -1545,13 +1554,14 @@ cd /home/tyche/Documents/identification/figaroh-plus
 python -c "import tomllib; f=open('pyproject.toml','rb'); d=tomllib.load(f); print(d['project'].get('optional-dependencies', {}))"
 ```
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add pyproject.toml README.md
 git commit -m "build: add casadi optional dependency group and pixi feature"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 8: 回归测试和集成测试
@@ -1560,7 +1570,7 @@ git commit -m "build: add casadi optional dependency group and pixi feature"
 - Modify: `tests/unit/test_backend.py`（追加：回归测试 + 集成测试）
 - Run: 全部现有 212 个测试验证无回归
 
-- [ ] **Step 1: 添加回归测试以确保所有现有测试通过 numerical backend**
+- [x] **Step 1: 添加回归测试以确保所有现有测试通过 numerical backend**
 
 追加到 `tests/unit/test_backend.py`:
 
@@ -1613,7 +1623,7 @@ class TestRegressionSafety:
         assert True
 ```
 
-- [ ] **Step 2: 运行全部现有测试**
+- [x] **Step 2: 运行全部现有测试**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -1623,7 +1633,7 @@ python -m pytest tests/ -v --tb=short 2>&1 | head -100
 
 如果现有测试因为 mock 不匹配失败，需要调整 mock 方式。关键点：`NumericalBackend` 不应改变任何现有行为。
 
-- [ ] **Step 3: 可选 — 如果 CasADi 可用，运行完整的 casadi 集成测试**
+- [x] **Step 3: 可选 — 如果 CasADi 可用，运行完整的 casadi 集成测试**
 
 ```bash
 cd /home/tyche/Documents/identification/figaroh-plus
@@ -1640,13 +1650,14 @@ except ImportError as e:
 "
 ```
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add tests/unit/test_backend.py
 git commit -m "test: add regression and integration tests for backend"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 9: 基准测试和文档
@@ -1655,7 +1666,7 @@ git commit -m "test: add regression and integration tests for backend"
 - Create: `docs/superpowers/reports/2026-07-02-casadi-optional-backend-adr.md`
 - Create: `scripts/benchmark_backend.py`（可选，放在 `figaroh-examples` 或 `scripts/` 目录）
 
-- [ ] **Step 1: 创建架构决策记录 (ADR)**
+- [x] **Step 1: 创建架构决策记录 (ADR)**
 
 创建 `docs/superpowers/reports/2026-07-02-casadi-optional-backend-adr.md`:
 
@@ -1693,20 +1704,21 @@ Introduce a strategy-pattern backend abstraction that lets users choose between:
 - Two-code-path maintenance burden mitigated by frozen numerical path
 ```
 
-- [ ] **Step 2: 审查所有新增代码的 docstring**
+- [x] **Step 2: 审查所有新增代码的 docstring**
 
 确认以下文件的所有公共类和方法的 docstring 完整且准确：
 - `src/figaroh/backend/base.py`（所有抽象方法和工厂函数）
 - `src/figaroh/backend/numerical.py`（所有覆盖方法）
 - `src/figaroh/backend/casadi.py`（所有公共方法、回调类、选项映射）
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add docs/superpowers/reports/2026-07-02-casadi-optional-backend-adr.md
 git commit -m "docs: add ADR for CasADi optional backend"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ## 测试策略映射
@@ -1721,6 +1733,7 @@ git commit -m "docs: add ADR for CasADi optional backend"
 | 回归测试 | Task 8 | `test_backend.py::TestRegressionSafety` | NumericalBackend.build_regressor ≡ build_regressor_basic; 全部 212 现有测试通过 |
 | 端到端 CasADi | Task 8 | 手动 | CasadiBackend 环境可用时，完整 solve() 成功 |
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ## 注意事项和风险

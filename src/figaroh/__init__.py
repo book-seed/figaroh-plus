@@ -10,6 +10,7 @@ from . import measurements
 from . import utils
 from . import visualisation
 from . import optimal
+from . import backend
 
 
 __version__ = "0.4.3"

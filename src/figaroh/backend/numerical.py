@@ -142,6 +142,19 @@ class NumericalBackend(Backend):
             lbg: list | None = None,
             ubg: list | None = None,
         ) -> dict:
+            """Solve the IPOPT problem.
+
+            Args:
+                x0: Initial guess. Defaults to ``problem.get_initial_guess()``.
+                lbg: Lower constraint bounds. Defaults to
+                    ``problem.get_constraint_bounds()[0]``.
+                ubg: Upper constraint bounds. Defaults to
+                    ``problem.get_constraint_bounds()[1]``.
+
+            Returns:
+                Dict with keys ``"x"`` (optimal solution) and ``"info"``
+                (IPOPT status information).
+            """
             if x0 is None:
                 x0 = problem.get_initial_guess()
             if lbg is None:

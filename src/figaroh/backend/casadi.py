@@ -28,6 +28,7 @@ Lazy import pattern: ``pinocchio.casadi`` and ``casadi`` are imported only when
 
 from __future__ import annotations
 from typing import Callable, Any, Optional
+import os
 import warnings
 
 import numpy as np
@@ -67,12 +68,35 @@ def _lazy_import() -> None:
         try:
             import pinocchio.casadi as _cpin
         except ImportError as e:
+            # Detect whether the user has PyPI 'pin' (no CasADi bindings)
+            # vs no pinocchio at all.
+            try:
+                import pinocchio as _pin_check
+                _pin_check_version = getattr(_pin_check, "__version__", "unknown")
+            except ImportError:
+                _pin_check_version = None
+
+            if _pin_check_version is not None:
+                hint = (
+                    "You have the PyPI 'pin' package installed, which does "
+                    "NOT include CasADi bindings.\n"
+                    "Replace it with conda-forge pinocchio:\n"
+                    "  pip uninstall pin\n"
+                    "  pixi add --feature casadi casadi pinocchio\n"
+                    "or:\n"
+                    "  conda install -c conda-forge casadi pinocchio\n\n"
+                )
+            else:
+                hint = (
+                    "Install conda-forge pinocchio with CasADi bindings:\n"
+                    "  pixi add --feature casadi casadi pinocchio\n"
+                    "or:\n"
+                    "  conda install -c conda-forge casadi pinocchio\n\n"
+                )
             raise ImportError(
                 "CasADi backend requires conda-forge pinocchio with CasADi "
-                "bindings.\nInstall with:\n"
-                "  pixi add --feature casadi casadi pinocchio\n"
-                "or:\n"
-                "  conda install -c conda-forge casadi pinocchio\n\n"
+                "bindings (the PyPI 'pin' package does NOT support CasADi).\n"
+                + hint +
                 "Alternative: use backend='numerical' (default)."
             ) from e
         cpin = _cpin
@@ -154,6 +178,12 @@ class ColumnEliminationCallback:
     """
 
     def __init__(self, name: str = "column_elim", opts: Optional[dict] = None):
+        """Initialise the callback wrapper.
+
+        Args:
+            name: Identifier for the callback instance.
+            opts: Optional dictionary of options.
+        """
         self._name = name
         self._opts = opts or {}
 
@@ -217,23 +247,68 @@ class CasadiBackend(Backend):
         robot: ``RobotWrapper`` instance (required for symbolic model).
     """
 
+    # Version tag appended to cache keys — bump when the symbolic
+    # model generation logic changes so stale caches are invalidated.
+    _CACHE_VERSION = "v1"
+
     def __init__(self, robot: Any):
+        """Initialise the CasADi backend.
+
+        Args:
+            robot: RobotWrapper instance used to build the symbolic model.
+        """
         self._robot = robot
         self._cmodel = None  # pinocchio.casadi Model (lazy)
         self._cdata = None  # pinocchio.casadi Data  (lazy)
         self._W_fun = None  # cs.Function: (q, v, a) -> W
 
+    @staticmethod
+    def _cache_dir() -> str:
+        """Return the cache directory, creating it if necessary."""
+        d = os.path.join(os.path.expanduser("~"), ".figaroh", "casadi_cache")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    @staticmethod
+    def _cache_key(robot) -> str:
+        """Build a deterministic cache key from the robot model."""
+        import hashlib
+        m = robot.model
+        # Use model name + joint count + total mass as a stable fingerprint
+        total_mass = sum(
+            float(i.mass) for i in m.inertias if abs(float(i.mass)) > 1e-9
+        )
+        fingerprint = f"{m.name}_{m.nq}_{m.nv}_{total_mass:.6f}"
+        h = hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
+        return f"{m.name}_{h}"
+
     def _ensure_symbolic_model(self):
-        """Build CasADi symbolic model on first use."""
+        """Build (or load from cache) the CasADi symbolic model."""
         if self._cmodel is not None:
             return
 
         _lazy_import()
 
+        key = self._cache_key(self._robot)
+        cache_file = os.path.join(
+            self._cache_dir(),
+            f"{key}_regressor_{self._CACHE_VERSION}.casadi",
+        )
+
+        # ── Try loading from cache ────────────────────────────────
+        try:
+            self._W_fun = cs.Function.load(cache_file)
+            # Rebuild pinocchio model (needed for cdata, nv, nq, etc.)
+            self._cmodel = cpin.Model(self._robot.model)
+            self._cdata = self._cmodel.createData()
+            return
+        except Exception:
+            pass  # cache miss — build from scratch
+
+        # ── Build symbolic model ──────────────────────────────────
         self._cmodel = cpin.Model(self._robot.model)
         self._cdata = self._cmodel.createData()
 
-        # Build symbolic regressor function
         cs_q = cs.SX.sym("q", self._cmodel.nq)
         cs_v = cs.SX.sym("v", self._cmodel.nv)
         cs_a = cs.SX.sym("a", self._cmodel.nv)
@@ -241,6 +316,51 @@ class CasadiBackend(Backend):
             self._cmodel, self._cdata, cs_q, cs_v, cs_a
         )
         self._W_fun = cs.Function("W", [cs_q, cs_v, cs_a], [W_expr])
+
+        # ── Save to cache ─────────────────────────────────────────
+        try:
+            self._W_fun.save(cache_file)
+        except Exception:
+            pass  # non-fatal — cache is an optimisation
+
+    @staticmethod
+    def regressor_is_jacobian_of_rnea() -> str:
+        """Return the mathematical relationship underpinning the regressor.
+
+        The joint-torque regressor :math:`\\mathbf{H}(\\mathbf{q},
+        \\dot{\\mathbf{q}}, \\ddot{\\mathbf{q}})` is the **Jacobian of
+        inverse dynamics w.r.t. the inertial parameters**:
+
+        .. math::
+
+            \\bm{\\tau} = \\mathbf{H}(\\mathbf{q}, \\dot{\\mathbf{q}},
+            \\ddot{\\mathbf{q}})\\, \\bm{\\pi}
+
+            \\mathbf{H} = \\frac{\\partial\\, \\text{RNEA}(\\mathbf{q},
+            \\dot{\\mathbf{q}}, \\ddot{\\mathbf{q}})}
+            {\\partial\\, \\bm{\\pi}}
+
+        where :math:`\\bm{\\pi} = [L_{xx}, L_{xy}, L_{xz}, L_{yy},
+        L_{yz}, L_{zz}, l_x, l_y, l_z, m]` are the 10 barycentric
+        inertial parameters per body (inertia tensor in joint frame
+        :math:`\\mathbf{L}`, first moment :math:`\\mathbf{l}`, mass
+        :math:`m`).
+
+        This is the insight from the MATLAB CasADi identification
+        pipeline — the regressor is not a separate computation but a
+        **consequence** of auto-differentiating the recursive
+        Newton-Euler algorithm w.r.t. the parameter vector.
+
+        Because ``cpin.computeJointTorqueRegressor`` builds this
+        Jacobian inside the CasADi SX graph, the resulting regressor
+        :math:`\\mathbf{H}` is **fully differentiable** — its gradient,
+        Jacobian, and Hessian are available analytically through
+        ``cs.gradient()``, ``cs.jacobian()``, and ``cs.hessian()``.
+        """
+        return (
+            "H(q, dq, ddq) = ∂ RNEA(q, dq, ddq) / ∂ π  "
+            "⇒  regressor IS the Jacobian of inverse dynamics"
+        )
 
     def build_regressor(
         self,
@@ -282,10 +402,51 @@ class CasadiBackend(Backend):
         W_map = self._W_fun.map(N, "serial")
         W_full = np.array(W_map(q_2d, v_2d, a_2d))
 
-        # Reshape stacked regressor
+        # CasADi map("serial") stacks samples horizontally per joint:
+        #   output shape = (nv, N * n_param_per_sample)
+        # Convert to interleaved format (N*nv, n_param) where row
+        # ordering matches the numerical backend.
         nv = self._cmodel.nv
-        n_param = W_full.shape[1]
-        W_stacked = W_full.reshape(N * nv, n_param)
+        n_param_total = W_full.shape[1] // N
+        # Reshape to (nv, N, n_param), then transpose to (N, nv, n_param)
+        # and flatten to (N*nv, n_param)
+        W_stacked = (
+            W_full.reshape(nv, N, n_param_total)
+            .transpose(1, 0, 2)
+            .reshape(N * nv, n_param_total)
+        )
+
+        # Append additional columns (friction, actuator inertia, offset)
+        # BEFORE column elimination — matches numerical backend order.
+        if identif_config:
+            has_friction = identif_config.get("has_friction", False)
+            has_actuator_inertia = identif_config.get("has_actuator_inertia", False)
+            has_joint_offset = identif_config.get("has_joint_offset", False)
+            act_idxv = identif_config.get("act_idxv", list(range(nv)))
+
+            if has_friction or has_actuator_inertia or has_joint_offset:
+                n_base = W_stacked.shape[1]
+                n_extra = (
+                    (2 if has_friction else 0) +
+                    (1 if has_actuator_inertia else 0) +
+                    (1 if has_joint_offset else 0)
+                ) * nv
+                W_ext = np.zeros((N * nv, n_base + n_extra))
+                W_ext[:, :n_base] = W_stacked
+
+                extra_col = n_base
+                for j in range(nv):
+                    if j in act_idxv:
+                        for i in range(N):
+                            row = j * N + i
+                            if has_friction:
+                                W_ext[row, extra_col + j] = v_2d[j, i]  # fv
+                                W_ext[row, extra_col + nv + j] = np.sign(v_2d[j, i])  # fs
+                            if has_actuator_inertia:
+                                W_ext[row, extra_col + 2*nv + j] = a_2d[j, i]  # ia
+                            if has_joint_offset:
+                                W_ext[row, extra_col + 3*nv + j] = 1.0  # offset
+                W_stacked = W_ext
 
         # Column elimination (threshold-based)
         if identif_config:
@@ -375,6 +536,17 @@ class CasadiBackend(Backend):
         solver = cs.nlpsol("traj_opt", "ipopt", nlp_def, nlpsol_opts)
 
         def solve_fn(x0, lbg=None, ubg=None):
+            """Solve the CasADi NLP problem.
+
+            Args:
+                x0: Initial guess for decision variables.
+                lbg: Lower constraint bounds (optional).
+                ubg: Upper constraint bounds (optional).
+
+            Returns:
+                Dict with keys ``"x"``, ``"f"``, ``"g"``, ``"status"``,
+                and ``"info"`` (solver statistics).
+            """
             lbg_val = lbg if lbg is not None else []
             ubg_val = ubg if ubg is not None else []
             solution = solver(
