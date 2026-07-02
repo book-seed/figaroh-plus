@@ -355,6 +355,54 @@ class TestCasadiBackend:
         assert W_b.shape[1] <= W_full.shape[1]
 
 
+class TestRegressionSafety:
+    """Regression tests ensuring backward compatibility is preserved."""
+
+    def test_numerical_backend_matches_existing_build_regressor(self):
+        """NumericalBackend.build_regressor matches direct build_regressor_basic."""
+        from unittest.mock import Mock
+        from figaroh.backend.numerical import NumericalBackend
+        from figaroh.tools.regressor import build_regressor_basic
+
+        with patch('figaroh.tools.regressor.pin') as mock_pin:
+            mock_pin.computeJointTorqueRegressor.return_value = np.random.randn(3, 30)
+
+            mock_robot = MagicMock()
+            mock_robot.model.nq = 3
+            mock_robot.model.nv = 3
+            mock_robot.model.inertias.tolist.return_value = [
+                MagicMock(mass=1.0), MagicMock(mass=2.0), MagicMock(mass=0.0)
+            ]
+            mock_robot.data = Mock()
+
+            q = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+            v = np.array([[0.7, 0.8, 0.9], [1.0, 1.1, 1.2]])
+            a = np.array([[1.3, 1.4, 1.5], [1.6, 1.7, 1.8]])
+            param = {
+                'is_joint_torques': True,
+                'has_friction': False,
+                'has_actuator_inertia': False,
+                'has_joint_offset': False,
+                'act_idxv': [0, 1, 2],
+            }
+
+            # Direct call (existing code path)
+            W_direct = build_regressor_basic(mock_robot, q, v, a, param)
+
+            # Through backend — must pass the robot so self._robot is set
+            backend = NumericalBackend(robot=mock_robot)
+            W_backend = backend.build_regressor(q, v, a, param)
+
+            assert np.allclose(W_direct, W_backend)
+
+    def test_create_backend_numerical_import_all_existing_tests(self):
+        """Verify that importing NumericalBackend doesn't break existing imports."""
+        import figaroh.tools.robotipopt
+        import figaroh.tools.regressor
+        import figaroh.backend.numerical
+        assert True
+
+
 class TestRootPackageExport:
     """Test that figaroh root package exports backend subpackage."""
 
