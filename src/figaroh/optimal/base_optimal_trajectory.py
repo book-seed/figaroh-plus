@@ -78,7 +78,6 @@ class BaseOptimalTrajectory:
         self.robot = robot
         self.model = self.robot.model
         self.active_joints = active_joints
-        self._backend = create_backend(backend, robot=robot)
 
         # Set up logger (configuration should be done by application, not library)
         self.logger = logging.getLogger(__name__)
@@ -87,6 +86,16 @@ class BaseOptimalTrajectory:
         self.trajectory_config, self.identif_config = load_param(
             self.robot, config_file
         )
+
+        # Backend selection with precedence:
+        # 1. Explicit programmatic argument (highest)
+        # 2. Config file 'backend' key
+        # 3. Default 'numerical'
+        if backend == "numerical" and self.trajectory_config.get("backend"):
+            effective_backend = self.trajectory_config["backend"]
+        else:
+            effective_backend = backend
+        self._backend = create_backend(effective_backend, robot=robot)
 
         # # Initialize components
         # self.initialize()
