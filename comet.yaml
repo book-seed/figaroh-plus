@@ -1,0 +1,2 @@
+build_command: pixi run build
+verify_command: pixi run test
