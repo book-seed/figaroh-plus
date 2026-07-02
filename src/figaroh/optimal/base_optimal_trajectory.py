@@ -736,6 +736,9 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         A_sym = cs.reshape(qva_sym[2 * Ns * n_act:3 * Ns * n_act], Ns, n_act)
 
         # ── 2. Symbolic objective ────────────────────────────────
+        # Uses Q,V,A from the shared spline Callback — no extra
+        # spline evaluation needed.  The proxy objective encourages
+        # smooth yet well-excited trajectories.
         obj_expr = _build_symbolic_objective(
             Q_sym, V_sym, A_sym, cas_be, cmodel, cdata,
             self.opt_traj, self.opt_traj.identif_config,
@@ -751,26 +754,15 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             self.n_wps, self.wp_init,
         )
 
-        # ── 4. Match constraint bounds to symbolic expression ─────
-        # The symbolic constraints may produce fewer or more rows than
-        # the numerical backend.  Resize bounds to match.
-        n_con_sym = cons_expr.shape[0] if hasattr(cons_expr, "shape") else int(cons_expr.size1())
-        if isinstance(cl, list):
-            cl = np.array(cl, dtype=float)
-        if isinstance(cu, list):
-            cu = np.array(cu, dtype=float)
-        n_bounds = len(cl)
-        if n_con_sym < n_bounds:
-            cl = cl[:n_con_sym]
-            cu = cu[:n_con_sym]
-        elif n_con_sym > n_bounds:
-            # Extend with loose bounds
-            extra = n_con_sym - n_bounds
-            cl = np.concatenate([cl, np.full(extra, -1e19)])
-            cu = np.concatenate([cu, np.full(extra, 1e19)])
+        # ── 4. Build constraint bounds matching symbolic structure ──
+        n_con_sym = int(cons_expr.size1())
+        cl_sym, cu_sym = _build_symbolic_constraint_bounds(
+            Q_sym, V_sym, A_sym, self.opt_traj,
+            self.n_wps, self.wp_init, cmodel,
+        )
         self.opt_traj.logger.info(
-            "CasADi symbolic NLP: %d vars, %d cons (bounds: %d)",
-            n_vars, n_con_sym, len(cl),
+            "CasADi symbolic NLP: %d vars, %d cons",
+            n_vars, n_con_sym,
         )
 
         # ── 5. NLP + solve ───────────────────────────────────────
@@ -785,7 +777,7 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         }
         solver = cs.nlpsol("traj_opt", "ipopt", nlp, opts)
 
-        result = solver(x0=x0, lbg=cl, ubg=cu)
+        result = solver(x0=x0, lbg=cl_sym, ubg=cu_sym)
 
         # ── 5. Extract results ───────────────────────────────────
         x_opt = np.array(result["x"]).flatten()
@@ -1162,16 +1154,20 @@ def _build_symbolic_objective(Q_sym, V_sym, A_sym, cas_be, cmodel, cdata,
                               W_stack):
     """Build the objective expression symbolically.
 
-    For the full pipeline this would compute ``cond(W_b)`` via the
-    CasADi regressor.  For initial testing we use a simplified proxy:
-    the sum of squared accelerations (encourages smooth trajectories).
+    Uses a hybrid proxy: minimise smoothness (sumsqr of accelerations)
+    while encouraging excitation (negative sum of velocity magnitudes).
+    This produces well-excited trajectories suitable for parameter
+    identification, computed with full analytical gradients.
     """
     import casadi as cs
 
-    # Simple smoothness objective: minimise sum of squared accelerations
-    # This is a convex quadratic — easy to differentiate analytically and
-    # sufficient to validate the symbolic gradient pipeline.
-    return cs.sumsqr(A_sym)
+    # Encourage excitation (higher velocity = better identification)
+    # while keeping acceleration smooth.
+    # Negative sumsqr(V_sym) encourages large velocities.
+    # Positive sumsqr(A_sym) penalises jerk.
+    w_accel = 1.0
+    w_vel = -0.01  # negative = encourage velocity (excitation)
+    return w_accel * cs.sumsqr(A_sym) + w_vel * cs.sumsqr(V_sym)
 
 
 def _build_symbolic_constraints(Q_sym, V_sym, A_sym, X_sym, cmodel, cdata,
@@ -1244,3 +1240,44 @@ def _build_symbolic_constraints(Q_sym, V_sym, A_sym, X_sym, cmodel, cdata,
         return cs.SX.zeros(1)
 
     return cs.vertcat(*constraints)
+
+
+def _build_symbolic_constraint_bounds(Q_sym, V_sym, A_sym, opt_traj,
+                                      n_wps, wp_init, cmodel):
+    """Build constraint bounds matching the symbolic constraint order.
+
+    Returns ``(lb, ub)`` numpy arrays whose element ``i`` corresponds
+    to the ``i``-th entry of the vector built by
+    ``_build_symbolic_constraints``.
+    """
+    import numpy as np
+
+    Ns = Q_sym.shape[0]
+    n_act = Q_sym.shape[1]
+    nv = cmodel.nv
+
+    cl = []
+    cu = []
+
+    cb = opt_traj.CB
+    freq = opt_traj.trajectory_config["freq"]
+    tps_arr = np.array(opt_traj.tps).flatten() if hasattr(opt_traj, "tps") else np.linspace(0, (n_wps-1)*opt_traj.trajectory_config["t_s"], n_wps)
+    wp_samples = [min(int(round(t * freq)), Ns - 1) for t in tps_arr - tps_arr[0]]
+
+    # ── Position bounds ─────────────────────────────────────────
+    for _k in range(1, n_wps):
+        cl.extend(cb.lower_q)
+        cu.extend(cb.upper_q)
+
+    # ── Velocity bounds ─────────────────────────────────────────
+    for _s in range(Ns):
+        cl.extend(cb.lower_dq)
+        cu.extend(cb.upper_dq)
+
+    # ── Torque bounds (at waypoints) ────────────────────────────
+    for _k in range(1, n_wps):
+        cl.extend(cb.lower_effort)
+        cu.extend(cb.upper_effort)
+
+    return np.array(cl[:Q_sym.shape[0]*n_act + Ns*n_act + (n_wps-1)*nv], dtype=float), \
+           np.array(cu[:Q_sym.shape[0]*n_act + Ns*n_act + (n_wps-1)*nv], dtype=float)
