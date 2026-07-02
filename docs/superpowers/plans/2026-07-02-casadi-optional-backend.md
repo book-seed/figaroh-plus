@@ -2,6 +2,7 @@
 change: casadi-optional-backend
 design-doc: docs/superpowers/specs/2026-07-02-casadi-optional-backend-design.md
 base-ref: 8d4b820138840289e3d2aadf73b80c1695a64dc4
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 # CasADi Optional Backend — 实施计划
@@ -23,6 +24,7 @@ base-ref: 8d4b820138840289e3d2aadf73b80c1695a64dc4
 - 所有变更基于 base-ref `8d4b820138840289e3d2aadf73b80c1695a64dc4`
 - TDD：每个 task 先写测试再写实现代码
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ## File Structure
@@ -42,6 +44,7 @@ base-ref: 8d4b820138840289e3d2aadf73b80c1695a64dc4
 | `README.md` | **修改** | CasADi 后端安装和使用说明 |
 | `docs/superpowers/reports/2026-07-02-casadi-optional-backend-adr.md` | **创建** | 架构决策记录 |
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 1: Backend 包和抽象基类
@@ -359,6 +362,7 @@ git add src/figaroh/backend/__init__.py src/figaroh/backend/base.py tests/unit/t
 git commit -m "feat(backend): add Backend ABC and create_backend factory"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 2: NumericalBackend 实现
@@ -606,6 +610,7 @@ git add src/figaroh/backend/numerical.py tests/unit/test_backend.py
 git commit -m "feat(backend): add NumericalBackend wrapping existing code paths"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 3: CasadiBackend 核心实现
@@ -1084,6 +1089,7 @@ git add src/figaroh/backend/casadi.py tests/unit/test_backend.py
 git commit -m "feat(backend): add CasadiBackend with symbolic regressor and cs.nlpsol"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 4: 更新包导出
@@ -1134,6 +1140,7 @@ git add src/figaroh/__init__.py
 git commit -m "feat: export backend subpackage from figaroh root"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 5: 整合到 BaseOptimalTrajectory
@@ -1387,6 +1394,7 @@ git add src/figaroh/optimal/base_optimal_trajectory.py tests/unit/test_backend.p
 git commit -m "feat(optimal): integrate backend into BaseOptimalTrajectory and BaseTrajectoryIPOPTProblem"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 6: 配置解析和后端选择
@@ -1468,6 +1476,7 @@ git add src/figaroh/optimal/config.py src/figaroh/optimal/base_optimal_trajector
 git commit -m "feat(config): add backend key parsing with programmatic precedence"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 7: 依赖管理和安装配置
@@ -1552,6 +1561,7 @@ git add pyproject.toml README.md
 git commit -m "build: add casadi optional dependency group and pixi feature"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 8: 回归测试和集成测试
@@ -1647,6 +1657,7 @@ git add tests/unit/test_backend.py
 git commit -m "test: add regression and integration tests for backend"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ### Task 9: 基准测试和文档
@@ -1707,6 +1718,7 @@ git add docs/superpowers/reports/2026-07-02-casadi-optional-backend-adr.md
 git commit -m "docs: add ADR for CasADi optional backend"
 ```
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ## 测试策略映射
@@ -1721,6 +1733,7 @@ git commit -m "docs: add ADR for CasADi optional backend"
 | 回归测试 | Task 8 | `test_backend.py::TestRegressionSafety` | NumericalBackend.build_regressor ≡ build_regressor_basic; 全部 212 现有测试通过 |
 | 端到端 CasADi | Task 8 | 手动 | CasadiBackend 环境可用时，完整 solve() 成功 |
 
+archived-with: 2026-07-02-casadi-optional-backend
 ---
 
 ## 注意事项和风险
