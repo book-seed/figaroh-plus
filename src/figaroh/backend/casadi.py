@@ -290,7 +290,7 @@ class CasadiBackend(Backend):
         N = q_2d.shape[1]
 
         # Map over N columns
-        W_map = self._W_fun.map(N, "openmp")
+        W_map = self._W_fun.map(N, "serial")
         W_full = np.array(W_map(q_2d, v_2d, a_2d))
 
         # CasADi map("serial") stacks samples horizontally per joint:
