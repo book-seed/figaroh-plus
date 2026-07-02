@@ -28,6 +28,7 @@ Lazy import pattern: ``pinocchio.casadi`` and ``casadi`` are imported only when
 
 from __future__ import annotations
 from typing import Callable, Any, Optional
+import os
 import warnings
 
 import numpy as np
@@ -246,6 +247,10 @@ class CasadiBackend(Backend):
         robot: ``RobotWrapper`` instance (required for symbolic model).
     """
 
+    # Version tag appended to cache keys — bump when the symbolic
+    # model generation logic changes so stale caches are invalidated.
+    _CACHE_VERSION = "v1"
+
     def __init__(self, robot: Any):
         """Initialise the CasADi backend.
 
@@ -257,17 +262,53 @@ class CasadiBackend(Backend):
         self._cdata = None  # pinocchio.casadi Data  (lazy)
         self._W_fun = None  # cs.Function: (q, v, a) -> W
 
+    @staticmethod
+    def _cache_dir() -> str:
+        """Return the cache directory, creating it if necessary."""
+        d = os.path.join(os.path.expanduser("~"), ".figaroh", "casadi_cache")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    @staticmethod
+    def _cache_key(robot) -> str:
+        """Build a deterministic cache key from the robot model."""
+        import hashlib
+        m = robot.model
+        # Use model name + joint count + total mass as a stable fingerprint
+        total_mass = sum(
+            float(i.mass) for i in m.inertias if abs(float(i.mass)) > 1e-9
+        )
+        fingerprint = f"{m.name}_{m.nq}_{m.nv}_{total_mass:.6f}"
+        h = hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
+        return f"{m.name}_{h}"
+
     def _ensure_symbolic_model(self):
-        """Build CasADi symbolic model on first use."""
+        """Build (or load from cache) the CasADi symbolic model."""
         if self._cmodel is not None:
             return
 
         _lazy_import()
 
+        key = self._cache_key(self._robot)
+        cache_file = os.path.join(
+            self._cache_dir(),
+            f"{key}_regressor_{self._CACHE_VERSION}.casadi",
+        )
+
+        # ── Try loading from cache ────────────────────────────────
+        try:
+            self._W_fun = cs.Function.load(cache_file)
+            # Rebuild pinocchio model (needed for cdata, nv, nq, etc.)
+            self._cmodel = cpin.Model(self._robot.model)
+            self._cdata = self._cmodel.createData()
+            return
+        except Exception:
+            pass  # cache miss — build from scratch
+
+        # ── Build symbolic model ──────────────────────────────────
         self._cmodel = cpin.Model(self._robot.model)
         self._cdata = self._cmodel.createData()
 
-        # Build symbolic regressor function
         cs_q = cs.SX.sym("q", self._cmodel.nq)
         cs_v = cs.SX.sym("v", self._cmodel.nv)
         cs_a = cs.SX.sym("a", self._cmodel.nv)
@@ -275,6 +316,51 @@ class CasadiBackend(Backend):
             self._cmodel, self._cdata, cs_q, cs_v, cs_a
         )
         self._W_fun = cs.Function("W", [cs_q, cs_v, cs_a], [W_expr])
+
+        # ── Save to cache ─────────────────────────────────────────
+        try:
+            self._W_fun.save(cache_file)
+        except Exception:
+            pass  # non-fatal — cache is an optimisation
+
+    @staticmethod
+    def regressor_is_jacobian_of_rnea() -> str:
+        """Return the mathematical relationship underpinning the regressor.
+
+        The joint-torque regressor :math:`\\mathbf{H}(\\mathbf{q},
+        \\dot{\\mathbf{q}}, \\ddot{\\mathbf{q}})` is the **Jacobian of
+        inverse dynamics w.r.t. the inertial parameters**:
+
+        .. math::
+
+            \\bm{\\tau} = \\mathbf{H}(\\mathbf{q}, \\dot{\\mathbf{q}},
+            \\ddot{\\mathbf{q}})\\, \\bm{\\pi}
+
+            \\mathbf{H} = \\frac{\\partial\\, \\text{RNEA}(\\mathbf{q},
+            \\dot{\\mathbf{q}}, \\ddot{\\mathbf{q}})}
+            {\\partial\\, \\bm{\\pi}}
+
+        where :math:`\\bm{\\pi} = [L_{xx}, L_{xy}, L_{xz}, L_{yy},
+        L_{yz}, L_{zz}, l_x, l_y, l_z, m]` are the 10 barycentric
+        inertial parameters per body (inertia tensor in joint frame
+        :math:`\\mathbf{L}`, first moment :math:`\\mathbf{l}`, mass
+        :math:`m`).
+
+        This is the insight from the MATLAB CasADi identification
+        pipeline — the regressor is not a separate computation but a
+        **consequence** of auto-differentiating the recursive
+        Newton-Euler algorithm w.r.t. the parameter vector.
+
+        Because ``cpin.computeJointTorqueRegressor`` builds this
+        Jacobian inside the CasADi SX graph, the resulting regressor
+        :math:`\\mathbf{H}` is **fully differentiable** — its gradient,
+        Jacobian, and Hessian are available analytically through
+        ``cs.gradient()``, ``cs.jacobian()``, and ``cs.hessian()``.
+        """
+        return (
+            "H(q, dq, ddq) = ∂ RNEA(q, dq, ddq) / ∂ π  "
+            "⇒  regressor IS the Jacobian of inverse dynamics"
+        )
 
     def build_regressor(
         self,

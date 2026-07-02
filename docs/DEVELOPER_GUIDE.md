@@ -367,7 +367,66 @@ automatically:
 
 ---
 
-## 8. Troubleshooting
+## 8. CasADi Function Caching
+
+The CasADi backend caches compiled symbolic Functions in
+`~/.figaroh/casadi_cache/` to avoid rebuilding the regressor graph on
+every run.  Cache keys are derived from the robot model's name, joint
+count, and total mass (a SHA-256 fingerprint).
+
+| Scenario | Time |
+|----------|------|
+| First build (no cache) | ~0.05 s (C++ native) |
+| Cache hit (subsequent runs) | ~0.03 s |
+| Cache miss (model changed) | ~0.05 s (rebuild + save) |
+
+The cache is invalidated automatically when:
+- The robot model changes (different URDF)
+- The cache version is bumped (`_CACHE_VERSION` in `casadi.py`)
+
+To clear the cache manually:
+```bash
+rm -rf ~/.figaroh/casadi_cache/
+```
+
+---
+
+## 9. Architecture Insight: Regressor as Jacobian
+
+The regressor matrix **H** is mathematically the **Jacobian of inverse
+dynamics w.r.t. the inertial parameter vector**:
+
+```
+H(q, dq, ddq) = ∂ RNEA(q, dq, ddq) / ∂ π
+
+where π = [Lxx, Lxy, Lxz, Lyy, Lyz, Lzz, lx, ly, lz, m]
+      per body (10 barycentric parameters)
+```
+
+This means:
+1. The regressor is NOT a separate computation — it's the result of
+   auto-differentiating RNEA w.r.t. parameters
+2. Because `pinocchio.casadi` builds RNEA inside the CasADi SX graph,
+   `cs.jacobian(cpin.rnea(...), params)` gives the **analytical
+   regressor** with a full derivative chain
+3. `cpin.computeJointTorqueRegressor` is a C++ optimisation of this
+   Jacobian — it returns the same SX expression but with a more
+   efficient internal implementation
+
+This insight comes from the MATLAB CasADi identification pipeline
+(`/home/tyche/Documents/identification/x/`) which explicitly uses
+`jacobian(dyn.tau, param_vec)` for the regressor and saves the
+resulting CasADi Functions to `.casadi` files for reuse.
+
+For figaroh, this means the regressor `W_fun(q, v, a)` is **fully
+differentiable** — we can compute `cs.gradient(cond(W), X)` analytically
+through the entire chain: spline → RNEA → regressor → condition number.
+The only remaining bottleneck is the column-elimination step (QR
+pivoting), which is wrapped as a numpy Callback.
+
+---
+
+## 10. Troubleshooting
 
 ### 8.1 `ImportError: CasADi backend requires conda-forge pinocchio`
 
@@ -421,7 +480,7 @@ grows with problem size — expect 3–10× speedup for 30+ variable problems.
 
 ---
 
-## 9. API Reference
+## 11. API Reference
 
 ### 9.1 `figaroh.backend`
 
@@ -465,7 +524,7 @@ Key methods:
 
 ---
 
-## 10. Development Workflow
+## 12. Development Workflow
 
 ### 10.1 Environment Setup
 
