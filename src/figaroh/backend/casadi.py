@@ -154,6 +154,12 @@ class ColumnEliminationCallback:
     """
 
     def __init__(self, name: str = "column_elim", opts: Optional[dict] = None):
+        """Initialise the callback wrapper.
+
+        Args:
+            name: Identifier for the callback instance.
+            opts: Optional dictionary of options.
+        """
         self._name = name
         self._opts = opts or {}
 
@@ -218,6 +224,11 @@ class CasadiBackend(Backend):
     """
 
     def __init__(self, robot: Any):
+        """Initialise the CasADi backend.
+
+        Args:
+            robot: RobotWrapper instance used to build the symbolic model.
+        """
         self._robot = robot
         self._cmodel = None  # pinocchio.casadi Model (lazy)
         self._cdata = None  # pinocchio.casadi Data  (lazy)
@@ -375,6 +386,17 @@ class CasadiBackend(Backend):
         solver = cs.nlpsol("traj_opt", "ipopt", nlp_def, nlpsol_opts)
 
         def solve_fn(x0, lbg=None, ubg=None):
+            """Solve the CasADi NLP problem.
+
+            Args:
+                x0: Initial guess for decision variables.
+                lbg: Lower constraint bounds (optional).
+                ubg: Upper constraint bounds (optional).
+
+            Returns:
+                Dict with keys ``"x"``, ``"f"``, ``"g"``, ``"status"``,
+                and ``"info"`` (solver statistics).
+            """
             lbg_val = lbg if lbg is not None else []
             ubg_val = ubg if ubg is not None else []
             solution = solver(
