@@ -73,10 +73,24 @@ class TestCreateBackendFactory:
             create_backend("invalid")
 
     def test_create_backend_casadi_without_deps(self):
-        """create_backend('casadi') without casadi installed raises ImportError."""
-        with patch.dict('sys.modules', {'pinocchio.casadi': None}):
+        """create_backend('casadi') without casadi raises ImportError on use."""
+        from unittest.mock import MagicMock
+
+        robot = MagicMock()
+        # Lazy import means creating the backend succeeds.
+        backend = create_backend("casadi", robot=robot)
+        # Only method calls trigger _lazy_import, which will fail.
+        with patch.dict(
+            "sys.modules",
+            {"casadi": None, "pinocchio": None, "pinocchio.casadi": None},
+        ):
             with pytest.raises(ImportError):
-                create_backend("casadi")
+                backend.build_regressor(
+                    np.array([[1.0]]),
+                    np.array([[1.0]]),
+                    np.array([[1.0]]),
+                    {},
+                )
 
 
 class TestNumericalBackend:
@@ -177,3 +191,105 @@ class TestNumericalBackend:
                 lb=[-1.0, -1.0], ub=[1.0, 1.0],
                 cl=[0.0], cu=[10.0],
             )
+
+
+class TestCasadiBackend:
+    """Test CasadiBackend (with mocked pinocchio.casadi and casadi)."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_casadi_globals(self):
+        """Reset module-level lazy imports between tests."""
+        import figaroh.backend.casadi as _m
+        _m.cpin = None
+        _m.cs = None
+        yield
+
+    def test_import_error_without_casadi(self):
+        """CasadiBackend._lazy_import raises ImportError when deps missing."""
+        from figaroh.backend.casadi import _lazy_import
+        import figaroh.backend.casadi as _m
+
+        _m.cpin = None
+        _m.cs = None
+        with patch.dict('sys.modules', {'casadi': None}):
+            with pytest.raises(ImportError, match="CasADi backend requires"):
+                _lazy_import()
+
+    @patch('figaroh.backend.casadi.cpin')
+    @patch('figaroh.backend.casadi.cs')
+    def test_lazy_initialization(self, mock_cs, mock_cpin):
+        """CasadiBackend initializes lazy -- no symbolic model at __init__."""
+        from figaroh.backend.casadi import CasadiBackend
+
+        robot = MagicMock()
+        backend = CasadiBackend(robot=robot)
+
+        assert backend._cmodel is None
+        assert backend._W_fun is None
+        assert not mock_cpin.Model.called
+
+    @patch('figaroh.backend.casadi.cpin')
+    @patch('figaroh.backend.casadi.cs')
+    def test_lazy_initialization_triggers_on_call(self, mock_cs, mock_cpin):
+        """First method call triggers _ensure_symbolic_model()."""
+        from figaroh.backend.casadi import CasadiBackend
+
+        mock_cpin.Model.return_value.nq = 3
+        mock_cpin.Model.return_value.nv = 3
+
+        robot = MagicMock()
+        backend = CasadiBackend(robot=robot)
+
+        # _ensure_symbolic_model is the trigger point for lazy init
+        backend._ensure_symbolic_model()
+        assert mock_cpin.Model.called
+        assert backend._cmodel is not None
+
+    @patch('figaroh.backend.casadi.cpin')
+    @patch('figaroh.backend.casadi.cs')
+    def test_name(self, mock_cs, mock_cpin):
+        """CasadiBackend.name returns 'casadi'."""
+        from figaroh.backend.casadi import CasadiBackend
+
+        backend = CasadiBackend(robot=MagicMock())
+        assert backend.name == "casadi"
+
+    @patch('figaroh.backend.casadi.cpin')
+    def test_create_solver_returns_callable(self, mock_cpin):
+        """CasadiBackend.create_solver returns cs.nlpsol wrapping callable."""
+        import casadi as _cs_real
+        import figaroh.backend.casadi as _m
+
+        # Inject the real casadi module so cs.nlpsol works
+        _m.cs = _cs_real
+        try:
+            from figaroh.backend.casadi import CasadiBackend
+
+            backend = CasadiBackend(robot=MagicMock())
+            x = _cs_real.SX.sym('x', 2)
+            nlp_def = {
+                'x': x,
+                'f': x[0]**2 + x[1]**2,
+                'g': _cs_real.vertcat(x[0] + x[1] - 1.0),
+            }
+            opts = {}
+            solver = backend.create_solver(nlp_def, opts)
+            assert callable(solver)
+        finally:
+            _m.cs = None
+
+    def test_column_elimination_callback(self):
+        """ColumnEliminationCallback wraps numpy-based column elimination."""
+        from figaroh.backend.casadi import ColumnEliminationCallback
+
+        cb = ColumnEliminationCallback('test_elim')
+        W_full = np.random.randn(15, 10)
+        active_cols = np.ones(10)
+        tol = np.array(1e-6)
+        result = cb.eval([W_full, active_cols, tol])
+
+        assert len(result) == 1
+        W_b = result[0]
+        assert isinstance(W_b, np.ndarray)
+        # W_b should have same or fewer columns than W_full
+        assert W_b.shape[1] <= W_full.shape[1]
