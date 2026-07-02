@@ -361,7 +361,8 @@ class CasadiBackend(Backend):
 
         Returns:
             A callable with signature ``solver(x0, lbg=None, ubg=None) -> dict``.
-            The returned dict contains ``'x'``, ``'f'``, ``'g'``, ``'status'``.
+            The returned dict contains ``'x'``, ``'f'``, ``'g'``, ``'status'``,
+            and ``'info'`` (solver stats dict).
         """
         _lazy_import()
 
@@ -392,6 +393,7 @@ class CasadiBackend(Backend):
                     else None
                 ),
                 "status": solver.stats()["return_status"],
+                "info": solver.stats(),
             }
 
         return solve_fn

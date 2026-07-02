@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import numpy as np
 import numdifftools as nd
-import cyipopt
 from typing import Callable, Any
 
 from .base import Backend
@@ -134,6 +133,7 @@ class NumericalBackend(Backend):
             (optimal solution) and ``"info"`` (IPOPT status information).
         """
         problem = nlp_def["problem"]
+        import cyipopt
         lb = nlp_def.get("lb", problem.get_variable_bounds()[0])
         ub = nlp_def.get("ub", problem.get_variable_bounds()[1])
 

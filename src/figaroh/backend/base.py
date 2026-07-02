@@ -140,7 +140,7 @@ def create_backend(
         return backend
 
     if backend == "numerical":
-        return NumericalBackend(**kwargs)
+        return NumericalBackend(robot=robot, **kwargs)
 
     if backend == "casadi":
         return _create_casadi_backend(robot=robot, **kwargs)
