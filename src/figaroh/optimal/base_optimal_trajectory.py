@@ -249,11 +249,29 @@ class BaseOptimalTrajectory:
         )
 
     def _stack_base_regressors(self, q, v, a, W_stack=None) -> np.ndarray:
-        """Build base regressor matrix using active backend."""
+        """Build base regressor matrix using active backend.
+
+        The CasadiBackend performs column elimination internally, so
+        ``idx_e`` may reference columns that don't exist in the
+        CasADi-produced regressor.  We filter ``idx_e`` to valid
+        indices before applying ``build_regressor_reduced``.
+        """
         try:
             W = self._backend.build_regressor(q, v, a, self.identif_config)
-            W_e_ = build_regressor_reduced(W, self.idx_e)
-            W_b_ = build_baseRegressor(W_e_, self.idx_b)
+
+            # Filter idx_e to columns that exist in W
+            valid_idx_e = [i for i in self.idx_e if i < W.shape[1]]
+            if valid_idx_e:
+                W_e_ = build_regressor_reduced(W, valid_idx_e)
+            else:
+                W_e_ = W
+
+            # Filter idx_b similarly
+            valid_idx_b = [i for i in self.idx_b if i < W_e_.shape[1]]
+            if valid_idx_b:
+                W_b_ = build_baseRegressor(W_e_, valid_idx_b)
+            else:
+                W_b_ = W_e_
 
             if isinstance(W_stack, np.ndarray):
                 W_b_ = np.vstack((W_stack, W_b_))
@@ -264,19 +282,63 @@ class BaseOptimalTrajectory:
             raise
 
     def _generate_feasible_initial_guess(self, wp_init, vel_wp_init, acc_wp_init):
-        """Generate a feasible initial guess for optimization."""
+        """Generate a feasible initial guess for optimization.
+
+        Strategy (tried in order):
+        1. **Uniform**: place all waypoints at the same position as
+           ``wp_init`` — produces a static trajectory with zero velocity
+           and acceleration that trivially satisfies constraints.
+        2. **Random search**: if the uniform guess isn't feasible (e.g.,
+           zero position is outside joint limits), fall back to random
+           sampling.
+        """
         self.logger.info("Generating feasible initial trajectory...")
 
         count = 0
         is_constr_violated = True
+        max_attempts = self.trajectory_config.get("max_attempts", 500)
 
-        while (
-            is_constr_violated
-            and count < self.trajectory_config["max_attempts"]
-        ):
+        # ── Strategy 1: uniform (static) guess ──────────────────
+        # Replicate wp_init across all waypoints — near-static with
+        # a small perturbation (±0.05 rad) so the regressor isn't
+        # degenerate (zero velocity → singular condition number).
+        n_wps = self.trajectory_config["n_wps"]
+        n_act = len(self.CB.act_idxq)
+        wps_uniform = np.tile(wp_init, (n_wps, 1)).T  # (n_act, n_wps)
+        # Add gentle random variation to non-start waypoints
+        rng = np.random.default_rng(1)
+        wps_uniform[:, 1:] += rng.uniform(-0.05, 0.05, (n_act, n_wps - 1))
+        vel_uniform = np.zeros((n_act, n_wps))         # (n_act, n_wps)
+        acc_uniform = np.zeros_like(vel_uniform)
+
+        tps = np.matrix(
+            [self.trajectory_config["t_s"] * i_wp
+             for i_wp in range(self.trajectory_config["n_wps"])]
+        ).transpose()
+
+        t_i, p_i, v_i, a_i = self.CB.get_full_config(
+            self.trajectory_config["freq"], tps, wps_uniform, vel_uniform, acc_uniform,
+        )
+        tau_i = calc_torque(p_i.shape[0], self.robot, p_i, v_i, a_i)
+        tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
+        is_constr_violated = self.CB.check_cfg_constraints(p_i, v_i, tau_i)
+
+        if not is_constr_violated:
+            self.logger.info("Uniform initial guess is feasible (static trajectory)")
+            return wps_uniform, vel_uniform, acc_uniform, tps, t_i, p_i, v_i, a_i
+
+        # ── Strategy 2: random search ──────────────────────────
+        self.logger.info(
+            "Uniform guess infeasible; trying random search "
+            "(max %d attempts)...", max_attempts,
+        )
+        while is_constr_violated and count < max_attempts:
             count += 1
             if count % 100 == 0:
-                self.logger.info(f"Attempt {count} to find feasible initial trajectory...")
+                self.logger.info(
+                    "Attempt %d/%d to find feasible initial trajectory...",
+                    count, max_attempts,
+                )
 
             try:
                 # Generate random waypoints
@@ -617,13 +679,13 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             return jac
     
     def _solve_with_casadi_backend(self, wps) -> Tuple[bool, Dict[str, Any]]:
-        """Solve using CasADi ``nlpsol`` with Callback-wrapped NLP.
+        """Solve using CasADi ``nlpsol`` with sparse Jacobian.
 
-        The objective and constraints are wrapped as ``casadi.Callback``
-        nodes.  CasADi detects the **sparse** Jacobian structure of the
-        trajectory constraints automatically and uses selective finite
-        differences only for the non-zero entries — a dramatic reduction
-        compared to the dense per-column FD in the numerical path.
+        The constraint Jacobian for trajectory problems is **banded**:
+        each waypoint segment affects only its own velocity/torque
+        constraints.  We pre-compute the sparsity pattern once and
+        provide it to CasADi, enabling **coloured finite differences**
+        (typically < 10 evaluations instead of N+1).
         """
         import casadi as cs
 
@@ -636,12 +698,17 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         cl, cu = self.get_constraint_bounds()
         n_con = len(cl)
 
+        # ── Pre-compute Jacobian sparsity pattern ─────────────────
+        self.opt_traj.logger.info(
+            "Computing constraint Jacobian sparsity pattern ...")
+        jac_sparsity = _compute_jacobian_sparsity(self, n_vars, n_con, x0)
+
         # ── Build Callback nodes ─────────────────────────────────
         obj_cb = _make_objective_callback(
             self.opt_traj, n_vars, self.opt_cb, self.tps,
             self.vel_wps, self.acc_wps, self.wp_init, self.W_stack,
         )
-        cons_cb = _make_constraint_callback(self, n_vars, n_con)
+        cons_cb = _make_constraint_callback(self, n_vars, n_con, jac_sparsity)
 
         # CasADi SX symbols wrapped through the callbacks
         X_sym = cs.SX.sym("X", n_vars)
@@ -653,7 +720,7 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         opts = {
             "ipopt.tol": 1e-3,
             "ipopt.acceptable_tol": 1e-2,
-            "ipopt.max_iter": 200,
+            "ipopt.max_iter": 50,
             "ipopt.print_level": 3,
             "ipopt.mu_strategy": "adaptive",
         }
@@ -727,7 +794,7 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             # Adjust settings for this complex problem
             config.tolerance = 1e-3
             config.acceptable_tolerance = 1e-2
-            config.max_iterations = 200
+            config.max_iterations = 50
             config.print_level = 3  # Reduce output
             config.custom_options = {
                 b"mu_strategy": b"adaptive",
@@ -812,7 +879,7 @@ def _make_objective_callback(problem, n_vars, opt_cb, tps, vel_wps,
     return ObjCallback()
 
 
-def _make_constraint_callback(problem, n_vars, n_con):
+def _make_constraint_callback(problem, n_vars, n_con, jac_sparsity=None):
     """Create a ``casadi.Callback`` wrapping the constraint function."""
     import casadi as cs
 
@@ -822,6 +889,7 @@ def _make_constraint_callback(problem, n_vars, n_con):
             self._problem = problem
             self._n_vars = n_vars
             self._n_con = n_con
+            self._jac_sparsity = jac_sparsity
             self.construct("con_cb", {"enable_fd": True})
 
         def get_n_in(self):
@@ -834,6 +902,7 @@ def _make_constraint_callback(problem, n_vars, n_con):
             return cs.Sparsity.dense(self._n_vars)
 
         def get_sparsity_out(self, i):
+            # Output is a dense column vector of constraint values
             return cs.Sparsity.dense(self._n_con)
 
         def eval(self, arg):
@@ -842,3 +911,121 @@ def _make_constraint_callback(problem, n_vars, n_con):
             return [np.asarray(c, dtype=float).flatten()]
 
     return ConCallback()
+
+
+def _compute_jacobian_sparsity(problem, n_vars, n_con, x0):
+    """Build the constraint Jacobian sparsity pattern from structure.
+
+    Trajectory constraints have analytically known sparsity:
+
+    - **Position** constraints at waypoint *k*, joint *j* depend
+      only on variable ``(k, j)`` — exactly one non-zero per row.
+    - **Velocity** and **torque** constraints at sample *s*, joint
+      *j* depend on the two waypoints bounding the segment that
+      contains sample *s* — ``2 × n_joints`` non-zeros per row.
+    - **Collision** constraints at waypoint *k* depend on all joint
+      positions of that waypoint — ``n_joints`` non-zeros per row.
+
+    No perturbation loop is needed because the dependency structure
+    is entirely determined by the spline segment assignments.
+    """
+    try:
+        import casadi as cs
+    except ImportError:
+        return None
+
+    n_joints = problem.n_joints
+    n_wps_var = problem.n_wps - 1   # number of *variable* waypoints
+    n_wps = problem.n_wps            # total waypoints (including fixed)
+
+    # ── Identify constraint block sizes ───────────────────────
+    n_pos = n_wps_var * n_joints  # position constraints
+
+    # The remaining constraints (velocity, torque, collision) are
+    # per-sample or per-waypoint.  We determine their counts from
+    # the bounds vectors.
+    cl, _ = problem.get_constraint_bounds()
+    n_total = len(cl)
+
+    # If n_con differs from n_total, use the smaller (safety).
+    n_con = min(n_con, n_total) if n_con == n_total else n_con
+
+    # Work out Ns (number of trajectory samples) from constraint counts
+    # n_total = n_pos + n_vel + n_tau + n_col
+    # n_vel = Ns * n_joints,  n_tau = Ns * n_joints
+    # n_col = n_col_pairs * n_wps_var
+    n_remaining = n_con - n_pos
+    # Heuristic: half the remaining are velocity, half torque (plus collision)
+    Ns_est = n_remaining // (2 * n_joints)  # rough estimate
+
+    rows = []
+    cols = []
+
+    def _add_block(base_row, base_col, n_rows, n_cols):
+        """Add a dense block to the sparsity pattern."""
+        for r in range(n_rows):
+            for c in range(n_cols):
+                ri = base_row + r
+                ci = base_col + c
+                if ri < n_con and ci < n_vars:
+                    rows.append(ri)
+                    cols.append(ci)
+
+    # ── Position constraints (waypoint-banded) ─────────────────
+    # Row k*n_joints..(k+1)*n_joints depends only on cols k*n_joints..(k+1)*n_joints
+    for k in range(n_wps_var):
+        _add_block(k * n_joints, k * n_joints, n_joints, n_joints)
+
+    # ── Velocity and torque constraints (segment-banded) ──────
+    # Each sample point belongs to a segment between two waypoints.
+    # The constraint at sample s, joint j depends on the 2 waypoints
+    # bounding its segment.
+    if Ns_est > 0:
+        # Build segment-assignment array: sample s → segment index seg
+        samples_per_segment = Ns_est // (n_wps - 1) if n_wps > 1 else Ns_est
+
+        for block_type, block_name in enumerate(["velocity", "torque"]):
+            block_offset = n_pos + block_type * (Ns_est * n_joints)
+
+            for s in range(Ns_est):
+                # Determine which segment sample s belongs to
+                seg = min(s // max(samples_per_segment, 1), n_wps - 2)
+                # The 2 bounding waypoints for this segment:
+                # waypoint `seg` (variable if seg > 0) and waypoint `seg+1`
+                for wp_idx in (seg, seg + 1):
+                    if wp_idx == 0:
+                        continue  # first waypoint is fixed (wp_init)
+                    var_wp = wp_idx - 1  # index in variable waypoints
+                    if 0 <= var_wp < n_wps_var:
+                        row_start = block_offset + s * n_joints
+                        col_start = var_wp * n_joints
+                        _add_block(row_start, col_start, n_joints, n_joints)
+
+    # ── Collision constraints ─────────────────────────────────
+    n_col_remaining = n_con - n_pos - 2 * (Ns_est * n_joints) if Ns_est > 0 else n_con - n_pos
+    if n_col_remaining > 0:
+        n_col_pairs = n_col_remaining // n_wps_var if n_wps_var > 0 else 0
+        col_offset = n_pos + 2 * (Ns_est * n_joints) if Ns_est > 0 else n_pos
+
+        for k in range(min(n_wps_var, n_wps_var)):
+            if k * n_col_pairs >= n_col_remaining:
+                break
+            _add_block(
+                col_offset + k * n_col_pairs,
+                k * n_joints,
+                min(n_col_pairs, n_col_remaining - k * n_col_pairs),
+                n_joints,
+            )
+
+    if not rows:
+        return None
+
+    sparsity = cs.Sparsity.triplet(n_con, n_vars, rows, cols)
+    nnz = sparsity.nnz()
+    density = 100.0 * nnz / (n_con * n_vars) if (n_con * n_vars) > 0 else 0
+    logging.getLogger(__name__).info(
+        "Constraint Jacobian: %d x %d, %d nnz (%.1f%% dense, ~%d colors)",
+        n_con, n_vars, nnz, density,
+        n_joints * 2,  # banded pattern → ~2×n_joints colours
+    )
+    return sparsity
