@@ -61,6 +61,19 @@ class TestCreateBackendFactory:
         backend = create_backend()
         assert isinstance(backend, NumericalBackend)
 
+    def test_create_backend_numerical_forwards_robot(self):
+        """create_backend('numerical', robot=robot) forwards robot to NumericalBackend."""
+        robot = MagicMock()
+        backend = create_backend("numerical", robot=robot)
+        assert isinstance(backend, NumericalBackend)
+        assert backend._robot is robot
+
+    def test_create_backend_casadi_forwards_robot(self):
+        """create_backend('casadi', robot=robot) forwards robot to CasadiBackend."""
+        robot = MagicMock()
+        backend = create_backend("casadi", robot=robot)
+        assert backend is not None
+
     def test_create_backend_passthrough(self):
         """create_backend(backend_instance) returns the instance unchanged."""
         numerical = NumericalBackend()
@@ -142,14 +155,15 @@ class TestNumericalBackend:
         nlp_def = {"problem": mock_problem}
         opts = {b"tol": 1e-6}
 
-        with patch('figaroh.backend.numerical.cyipopt') as mock_cyipopt:
-            mock_nlp = MagicMock()
-            mock_nlp.solve.return_value = (
-                np.array([0.5, 1.0]),
-                {"status": 0, "obj_val": 1.0},
-            )
-            mock_cyipopt.Problem.return_value = mock_nlp
+        mock_cyipopt = MagicMock()
+        mock_nlp = MagicMock()
+        mock_nlp.solve.return_value = (
+            np.array([0.5, 1.0]),
+            {"status": 0, "obj_val": 1.0},
+        )
+        mock_cyipopt.Problem.return_value = mock_nlp
 
+        with patch.dict('sys.modules', {'cyipopt': mock_cyipopt}):
             backend = NumericalBackend()
             solver = backend.create_solver(nlp_def, opts)
 
@@ -162,6 +176,22 @@ class TestNumericalBackend:
             np.testing.assert_array_equal(result["x"], [0.5, 1.0])
             mock_cyipopt.Problem.assert_called_once()
 
+    def test_cyipopt_not_imported_at_module_level(self):
+        """cyipopt is lazily imported in create_solver, not at module level."""
+        import importlib
+        import sys
+
+        # Clean up any prior imports so we can test fresh
+        sys.modules.pop('cyipopt', None)
+        if 'figaroh.backend.numerical' in sys.modules:
+            importlib.reload(sys.modules['figaroh.backend.numerical'])
+
+        # cyipopt should NOT appear in sys.modules from importing numerical
+        assert 'cyipopt' not in sys.modules, (
+            "cyipopt must be lazy-imported inside create_solver, "
+            "not at module level"
+        )
+
     def test_create_solver_passes_custom_bounds(self):
         """create_solver passes custom lbg/ubg to cyipopt.Problem."""
         mock_problem = MagicMock()
@@ -171,14 +201,15 @@ class TestNumericalBackend:
         nlp_def = {"problem": mock_problem}
         opts = {b"tol": 1e-8}
 
-        with patch('figaroh.backend.numerical.cyipopt') as mock_cyipopt:
-            mock_nlp = MagicMock()
-            mock_nlp.solve.return_value = (
-                np.array([0.0, 0.0]),
-                {"status": 0},
-            )
-            mock_cyipopt.Problem.return_value = mock_nlp
+        mock_cyipopt = MagicMock()
+        mock_nlp = MagicMock()
+        mock_nlp.solve.return_value = (
+            np.array([0.0, 0.0]),
+            {"status": 0},
+        )
+        mock_cyipopt.Problem.return_value = mock_nlp
 
+        with patch.dict('sys.modules', {'cyipopt': mock_cyipopt}):
             backend = NumericalBackend()
             solver = backend.create_solver(nlp_def, opts)
 
@@ -275,6 +306,35 @@ class TestCasadiBackend:
             opts = {}
             solver = backend.create_solver(nlp_def, opts)
             assert callable(solver)
+        finally:
+            _m.cs = None
+
+    def test_create_solver_returns_info_key(self):
+        """CasadiBackend.create_solver returns 'info' key for consistency."""
+        import casadi as _cs_real
+        import figaroh.backend.casadi as _m
+
+        _m.cs = _cs_real
+        try:
+            from figaroh.backend.casadi import CasadiBackend
+
+            backend = CasadiBackend(robot=MagicMock())
+            x = _cs_real.SX.sym('x', 2)
+            nlp_def = {
+                'x': x,
+                'f': x[0]**2 + x[1]**2,
+            }
+            opts = {}
+            solver = backend.create_solver(nlp_def, opts)
+            result = solver(np.array([0.5, 0.5]))
+
+            # Must have 'info' key (dict) for consistency with NumericalBackend
+            assert "info" in result, (
+                "CasadiBackend.create_solver must return 'info' key"
+            )
+            assert isinstance(result["info"], dict), "'info' must be a dict"
+            # 'status' must still be present for backward compatibility
+            assert "status" in result
         finally:
             _m.cs = None
 
