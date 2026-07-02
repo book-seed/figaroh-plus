@@ -31,8 +31,8 @@ from typing import Dict, List, Tuple, Any
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+from figaroh.backend.base import BackendType, create_backend
 from figaroh.tools.regressor import (
-    build_regressor_basic,
     build_regressor_reduced,
 )
 from figaroh.tools.qrdecomposition import build_baseRegressor
@@ -63,12 +63,22 @@ class BaseOptimalTrajectory:
     robot-specific configuration loading and constraint handling.
     """
 
-    def __init__(self, robot, active_joints: List[str], 
-                 config_file: str = "config/robot_config.yaml"):
-        """Initialize the optimal trajectory generator."""
+    def __init__(self, robot, active_joints: List[str],
+                 config_file: str = "config/robot_config.yaml",
+                 backend: BackendType = "numerical"):
+        """Initialize the optimal trajectory generator.
+
+        Args:
+            robot: RobotWrapper instance.
+            active_joints: List of active joint names.
+            config_file: Path to configuration YAML file.
+            backend: Backend specifier — "numerical" (default), "casadi",
+                or a Backend instance.
+        """
         self.robot = robot
         self.model = self.robot.model
         self.active_joints = active_joints
+        self._backend = create_backend(backend, robot=robot)
 
         # Set up logger (configuration should be done by application, not library)
         self.logger = logging.getLogger(__name__)
@@ -230,9 +240,9 @@ class BaseOptimalTrajectory:
         )
 
     def _stack_base_regressors(self, q, v, a, W_stack=None) -> np.ndarray:
-        """Build base regressor matrix."""
+        """Build base regressor matrix using active backend."""
         try:
-            W = build_regressor_basic(self.robot, q, v, a, self.identif_config)
+            W = self._backend.build_regressor(q, v, a, self.identif_config)
             W_e_ = build_regressor_reduced(W, self.idx_e)
             W_b_ = build_baseRegressor(W_e_, self.idx_b)
 
@@ -597,20 +607,48 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             jac[:min_dim, :min_dim] = np.eye(min_dim)
             return jac
     
+    def _solve_with_casadi_backend(self, wps) -> Tuple[bool, Dict[str, Any]]:
+        """Solve using CasADi symbolic NLP path.
+
+        Subclasses must override this method to provide CasADi-specific
+        trajectory parameterisation (spline construction, NLP variable
+        formulation, etc.) that cannot be expressed generically in the
+        base class.
+
+        Args:
+            wps: Initial waypoints.
+
+        Returns:
+            Tuple of (success, results_dict).
+
+        Raises:
+            NotImplementedError: Always — subclasses must implement this
+                when using the CasADi backend.
+        """
+        raise NotImplementedError(
+            "CasADi backend requires subclass to implement "
+            "_solve_with_casadi_backend"
+        )
+
     def solve_with_waypoints(self, wps) -> Tuple[bool, Dict[str, Any]]:
         """
         Solve the optimization problem with given initial waypoints.
-        
+
         Args:
             wps: Initial waypoints
-            
+
         Returns:
             Tuple of (success, results_dict)
         """
         try:
             # Store initial waypoints for get_initial_guess
             self._initial_wps = wps
-            
+
+            # Check if backend provides solver override
+            backend = self.opt_traj._backend
+            if backend.name == "casadi":
+                return self._solve_with_casadi_backend(wps)
+
             # Create solver with trajectory optimization config
             config = IPOPTConfig.for_trajectory_optimization()
             # Adjust settings for this complex problem
@@ -622,16 +660,16 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
                 b"mu_strategy": b"adaptive",
             }
             solver = RobotIPOPTSolver(self, config)
-            
+
             # Solve the problem
             success, results = solver.solve()
-            
+
             if success:
                 # Extract final waypoint for next segment
                 X_opt = results['x_opt']
                 wps_X = np.reshape(np.array(X_opt), (self.n_wps - 1, self.n_joints))
                 final_waypoint = wps_X[-1, :]
-                
+
                 # Update results with trajectory-specific data
                 results.update({
                     't_f': self.opt_cb["t_f"],
@@ -646,12 +684,12 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
                         'final_waypoint': final_waypoint
                     }
                 })
-                
+
                 return True, results
             else:
                 self.logger.error("Optimization failed")
                 return False, results
-                
+
         except Exception as e:
             self.logger.error(f"Error in IPOPT solve: {e}")
             return False, {'error': str(e)}

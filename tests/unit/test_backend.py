@@ -353,3 +353,24 @@ class TestCasadiBackend:
         assert isinstance(W_b, np.ndarray)
         # W_b should have same or fewer columns than W_full
         assert W_b.shape[1] <= W_full.shape[1]
+
+
+class TestRootPackageExport:
+    """Test that figaroh root package exports backend subpackage."""
+
+    def test_backend_accessible_as_figaroh_attribute(self):
+        """backend is accessible as figaroh.backend after importing figaroh."""
+        import sys
+        import importlib
+
+        # Clear figaroh modules to avoid pollution from test module imports
+        for mod in list(sys.modules.keys()):
+            if "figaroh" in mod:
+                del sys.modules[mod]
+
+        import figaroh
+
+        # This requires `from . import backend` in figaroh/__init__.py.
+        # Without it, figaroh.backend is NOT set as an attribute on the module.
+        assert hasattr(figaroh, "backend")
+        assert figaroh.backend is not None
