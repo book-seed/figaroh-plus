@@ -88,6 +88,7 @@ References:
 # from ndcurves import piecewise, ndcurves.exact_cubic,
 # ndcurves.curve_constraints
 import logging
+from pickle import NONE
 
 import ndcurves
 import numpy as np
@@ -173,7 +174,7 @@ class CubicSpline:
     """
 
     def __init__(self, robot, num_waypoints: int, active_joints: list,
-                 soft_lim=0):
+                 soft_lim_pool=None):
         """
         Initialize the cubic spline trajectory generator.
         
@@ -202,6 +203,7 @@ class CubicSpline:
         self.robot = robot
         self.rmodel = self.robot.model
         self.num_waypoints = num_waypoints
+        self.soft_lim_pool = soft_lim_pool
         # joint id of active joints
         self.act_Jid = [self.rmodel.getJointId(i) for i in active_joints]
         # active joint objects and their names
@@ -222,56 +224,51 @@ class CubicSpline:
 
         self.upper_dq = self.rmodel.velocityLimit[self.act_idxv]
         self.lower_dq = -self.rmodel.velocityLimit[self.act_idxv]
+        
+        self.upper_ddq = k * self.upper_dq
+        self.lower_ddq = k * self.lower_dq
 
         self.upper_effort = self.rmodel.effortLimit[self.act_idxv]
         self.lower_effort = -self.rmodel.effortLimit[self.act_idxv]
+        
+        # if soft_limit_pool is None:
+        #     soft_limit_pool = np.zeros((3, len(self.act_idxq)))
+        assert np.array(self.soft_lim_pool).shape == (
+            3, len(self.act_idxq),
+        ), "input a vector of soft limit pool with a shape of (3, len(activejoints)"
 
         # joint limits on active joints with soft limit on both limit ends
-        if soft_lim > 0:
-            self.upper_q = self.upper_q - soft_lim * abs(self.upper_q - self.lower_q)
-            self.lower_q = self.lower_q + soft_lim * abs(self.upper_q - self.lower_q)
+        if self.soft_lim_pool is not None:
+            delta_q = abs(self.upper_q - self.lower_q)
+            delta_dq = abs(self.upper_dq - self.lower_dq)
+            delta_effort = abs(self.upper_effort - self.lower_effort)
+            
+            self.upper_q = self.upper_q - self.soft_lim_pool[0, :] * delta_q
+            self.lower_q = self.lower_q + self.soft_lim_pool[0, :] * delta_q
 
-            self.upper_dq = self.upper_dq - soft_lim * abs(
-                self.upper_dq - self.lower_dq
-            )
-            self.lower_dq = self.lower_dq + soft_lim * abs(
-                self.upper_dq - self.lower_dq
-            )
+            self.upper_dq = self.upper_dq - self.soft_lim_pool[1, :] * delta_dq
+            self.lower_dq = self.lower_dq + self.soft_lim_pool[1, :] * delta_dq  
+            
+            self.upper_ddq = k * self.upper_dq
+            self.lower_ddq = k * self.lower_dq
 
-            self.upper_effort = self.upper_effort - soft_lim * abs(
-                self.upper_effort - self.lower_effort
-            )
-            self.lower_effort = self.lower_effort + soft_lim * abs(
-                self.upper_effort - self.lower_effort
-            )
+            self.upper_effort = self.upper_effort - self.soft_lim_pool[2, :] * delta_effort
+            self.lower_effort = self.lower_effort + self.soft_lim_pool[2, :] * delta_effort
+            
 
-    def get_active_config(
-        self,
-        freq: int,
-        time_points: np.ndarray,
-        waypoints: np.ndarray,
-        vel_waypoints=None,
-        acc_waypoints=None,
-    ):
+    def get_active_config(self, freq: int, time_points: np.ndarray, 
+                          waypoints: np.ndarray, vel_waypoints=None, 
+                          acc_waypoints=None):
         """Generate cubic splines on active joints"""
         # dimensions
-        assert (
-            self.dim_q == waypoints.shape
-        ), "(Pos) Check size \
-                                        (num_active_joints,num_waypoints)!"
+        assert (self.dim_q == waypoints.shape), "(Pos) Check size (num_active_joints,num_waypoints)!"
         self.pc = ndcurves.piecewise()  # set piecewise object to join segments
 
         # C_2 continuous at waypoints
         if vel_waypoints is not None and acc_waypoints is not None:
             # dimensions
-            assert (
-                self.dim_v == vel_waypoints.shape
-            ), "(Vel) Check size\
-                                        (num_active_joints, num_waypoints)!"
-            assert (
-                self.dim_v == acc_waypoints.shape
-            ), "(Acc) Check size\
-                                        (num_active_joints, num_waypoints)!"
+            assert (self.dim_v == vel_waypoints.shape), "(Vel) Check size (num_active_joints, num_waypoints)!"
+            assert (self.dim_v == acc_waypoints.shape), "(Acc) Check size (num_active_joints, num_waypoints)!"
 
             # make exact cubic WITH constraints on vel and acc on both ends
             for i in range(self.num_waypoints - 1):
@@ -296,30 +293,23 @@ class CubicSpline:
                 self.pc.append(ec)
 
         # time step
-        self.delta_t = 1 / freq  # Added spaces around '/'
+        delta_t = 1 / freq  # Added spaces around '/'
         # total travel time
-        self.T = self.pc.max() - self.pc.min()
+        T = self.pc.max() - self.pc.min()
         # get number sample points from generated trajectory
-        self.N = int(self.T / self.delta_t) + 1
+        self.N = int(T / delta_t) + 1
+                
         # create time stamps on all sample points
-        self.t = (
-            self.pc.min()
-            + np.matrix([i * self.delta_t for i in range(self.N)]).transpose()
-        )
-
+        t = np.linspace(start=self.pc.min(), stop=self.pc.max(), num=self.N).reshape(-1, 1)
         # compute derivatives to obtain pos/vel/acc on all samples (bad)
-        self.q_act = np.array(
-            [self.pc(self.t[i, 0]) for i in range(self.N)], dtype="float"
-        )
-        self.dq_act = np.array(
-            [self.pc.derivate(self.t[i, 0], 1) for i in range(self.N)], dtype="float"
-        )
-        self.ddq_act = np.array(
-            [self.pc.derivate(self.t[i, 0], 2) for i in range(self.N)], dtype="float"
-        )
-        t, p_act, v_act, a_act = self.t, self.q_act, self.dq_act, self.ddq_act
-
-        return t, p_act, v_act, a_act
+        q_act = np.array(
+            [self.pc(t[i, 0]) for i in range(self.N)], dtype="float")
+        dq_act = np.array(
+            [self.pc.derivate(t[i, 0], 1) for i in range(self.N)], dtype="float")
+        ddq_act = np.array(
+            [self.pc.derivate(t[i, 0], 2) for i in range(self.N)], dtype="float")
+        
+        return t, q_act, dq_act, ddq_act
 
     def get_full_config(
         self,
@@ -397,17 +387,16 @@ class CubicSpline:
             freq, time_points, waypoints, vel_waypoints, acc_waypoints
         )
         # create array of zero configuration times N samples
-        self.q_full = np.array([self.robot.q0] * self.N)
-        self.dq_full = np.array([np.zeros_like(self.robot.v0)] * self.N)
-        self.ddq_full = np.array([np.zeros_like(self.robot.v0)] * self.N)
+        q_full = np.array([self.robot.q0] * self.N)
+        dq_full = np.array([np.zeros_like(self.robot.v0)] * self.N)
+        ddq_full = np.array([np.zeros_like(self.robot.v0)] * self.N)
 
         # fill in trajectory with active joints values
-        self.q_full[:, self.act_idxq] = p_act
-        self.dq_full[:, self.act_idxv] = v_act
-        self.ddq_full[:, self.act_idxv] = a_act
+        q_full[:, self.act_idxq] = p_act
+        dq_full[:, self.act_idxv] = v_act
+        ddq_full[:, self.act_idxv] = a_act
 
-        p_full, v_full, a_full = self.q_full, self.dq_full, self.ddq_full
-        return t, p_full, v_full, a_full
+        return t, q_full, dq_full, ddq_full
 
     def check_cfg_constraints(self, q, v=None, tau=None, soft_lim=0):
         """
@@ -586,7 +575,7 @@ class WaypointsGeneration(CubicSpline):
     """
 
     def __init__(self, robot, num_waypoints: int, active_joints: list,
-                 soft_lim=0):
+                 soft_lim_pool=None):
         """
         Initialize waypoint generation for cubic spline trajectories.
         
@@ -606,75 +595,30 @@ class WaypointsGeneration(CubicSpline):
             but does not set the waypoint generation pools. Use
             set_soft_limit_pool() for custom pool limits.
         """
-        super().__init__(robot, num_waypoints, active_joints, soft_lim=0)
+        super().__init__(robot, num_waypoints, active_joints, soft_lim_pool)
 
         self.n_set = 10  # size of waypoints pool
         self.pool_q = np.zeros((self.n_set, len(self.act_idxq)))
         self.pool_dq = np.zeros((self.n_set, len(self.act_idxv)))
         self.pool_ddq = np.zeros((self.n_set, len(self.act_idxv)))
-        self.soft_limit_pool_default = np.zeros((3, len(self.act_idxq)))
 
-    def gen_rand_pool(self, soft_limit_pool=None):
+    def gen_rand_pool(self):
         """Generate a uniformly distributed waypoint pool of pos/vel/acc over
         a specific range
         """
-        if soft_limit_pool is None:
-            soft_limit_pool = self.soft_limit_pool_default
-        assert np.array(soft_limit_pool).shape == (
-            3,
-            len(self.act_idxq),
-        ), "input a vector of soft limit pool with a shape of (3, len(activejoints)"
-        lim_q = soft_limit_pool[0, :]
-        lim_dq = soft_limit_pool[1, :]
-        lim_ddq = soft_limit_pool[2, :]
-
-        new_upper_q = np.zeros_like(self.upper_q)
-        new_lower_q = np.zeros_like(self.lower_q)
-        new_upper_dq = np.zeros_like(self.upper_dq)
-        new_lower_dq = np.zeros_like(self.lower_dq)
-        new_upper_ddq = np.zeros_like(self.upper_dq)
-        new_lower_ddq = np.zeros_like(self.lower_dq)
-
         for i in range(len(self.act_idxq)):
-            new_upper_q[i] = self.upper_q[i] - lim_q[i] * abs(
-                self.upper_q[i] - self.lower_q[i]
-            )
-            new_lower_q[i] = self.lower_q[i] + lim_q[i] * abs(
-                self.upper_q[i] - self.lower_q[i]
-            )
-
-            step_q = (new_upper_q[i] - new_lower_q[i]) / (self.n_set - 1)
-            self.pool_q[:, i] = np.array(
-                [new_lower_q[i] + j * step_q for j in range(self.n_set)]
-            )
+            self.pool_q[:, i] = np.linspace(self.lower_q[i], self.upper_q[i], self.n_set)
 
         for i in range(len(self.act_idxv)):
-            new_upper_dq[i] = self.upper_dq[i] - lim_dq[i] * abs(
-                self.upper_dq[i] - self.lower_dq[i]
-            )
-            new_lower_dq[i] = self.lower_dq[i] + lim_dq[i] * abs(
-                self.upper_dq[i] - self.lower_dq[i]
-            )
-
-            new_upper_ddq[i] = k * (
-                self.upper_dq[i] - lim_ddq[i] * abs(self.upper_dq[i] - self.lower_dq[i])
-            )  # Fixed line break
-            new_lower_ddq[i] = k * (
-                self.lower_dq[i] + lim_ddq[i] * abs(self.upper_dq[i] - self.lower_dq[i])
-            )  # Fixed line break
-
-            step_dq = (new_upper_dq[i] - new_lower_dq[i]) / (self.n_set - 1)
-            self.pool_dq[:, i] = np.array(
-                [new_lower_dq[i] + j * step_dq for j in range(self.n_set)]
-            )
-
-            step_ddq = (new_upper_ddq[i] - new_lower_ddq[i]) / (self.n_set - 1)
-            self.pool_ddq[:, i] = np.array(
-                [new_lower_ddq[i] + j * step_ddq for j in range(self.n_set)]
-            )
-        # return self.pool_q, self.pool_dq, self.pool_ddq
+            self.pool_dq[:, i] = np.linspace(self.lower_dq[i], self.upper_dq[i], self.n_set)
+            self.pool_ddq[:, i] = np.linspace(self.lower_ddq[i], self.upper_ddq[i], self.n_set)
 
     def check_repeat_wp(self, wp_list: list):
+        """
+        Check if there are any *adjacent* repeated waypoints in the list.        
+        Args:wp_list (list): List of waypoints to check for *adjacent* repetition            
+        Returns: bool: True if any adjacent waypoints are repeated, False otherwise
+        """
         repeat = False
         for ii in range(len(wp_list) - 1):
             if wp_list[ii] == wp_list[ii + 1]:
@@ -689,8 +633,7 @@ class WaypointsGeneration(CubicSpline):
         vel_set_zero=True,
         acc_set_zero=True,
     ):
-        """Generate waypoint pos/vel/acc which randomly pick from waypoint
-        pool
+        """Generate waypoint pos/vel/acc which randomly pick from waypoint pool
         Or, set vel and/or acc at waypoints to be zero
         """
         wps_rand = np.zeros((self.num_waypoints, len(self.act_idxq)))

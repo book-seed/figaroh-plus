@@ -41,12 +41,12 @@ from figaroh.identification.parameter import (
 class BaseParameterComputer:
     """Handles base parameter computation and indexing."""
 
-    def __init__(self, robot, identif_config, active_joints, soft_lim_pool):
+    def __init__(self, robot, identif_config, soft_lim_pool):
         self.robot = robot
         self.model = self.robot.model
         self.standard_parameter: list | None = None
         self.identif_config = identif_config
-        self.active_joints = active_joints
+        self.active_joints = identif_config["active_joints"]
         self.soft_lim_pool = soft_lim_pool
         self.logger = logging.getLogger(__name__)
 
@@ -56,32 +56,39 @@ class BaseParameterComputer:
 
         try:
             # Generate random trajectory for base parameter computation
-            n_wps_r = 100 # 路径点数量
-            freq_r = 100
-            CB_r = CubicSpline(self.robot, n_wps_r, self.active_joints)
-            WP_r = WaypointsGeneration(self.robot, n_wps_r, self.active_joints)
-            WP_r.gen_rand_pool(self.soft_lim_pool)
-
-            # Generate waypoints and trajectory
-            wps_r, vel_wps_r, acc_wps_r = WP_r.gen_rand_wp()
-            tps_r = np.matrix([0.5 * i for i in range(n_wps_r)]).transpose()
-            t_r, p_r, v_r, a_r = CB_r.get_full_config(
-                freq_r, tps_r, wps_r, vel_wps_r, acc_wps_r
-            )
-
-            # Compute base indices
+            n_wps_r = 100   #TODO 路径点数量（和yaml里的参数有没有关系？？？）
+            freq_r = 100    #TODO 和yaml里的参数有没有关系？？？
+            # CB_r = CubicSpline(self.robot, n_wps_r, self.active_joints)
+            WP_r = WaypointsGeneration(self.robot, n_wps_r, self.active_joints, self.soft_lim_pool)
+            
+            # 1. 每个joint在关节位置、速度，加速度限位内均匀生成10个候选点
+            WP_r.gen_rand_pool()
+            
+            # 2. 基于步骤1生成的候选点，每个关节生成关节位置/速度/加速度序列（n_wps_r个点），要求相邻点位置/速度/加速度不同。
+            #    参数：vel_set_zero=True, acc_set_zero=True,因此生成的轨迹中速度和加速度都为0
+            wps_r, vel_wps_r, acc_wps_r = WP_r.gen_rand_wp(vel_set_zero=True, acc_set_zero=True)
+            
+            # 3. 基于步骤2生成的关节位置/速度/加速度序列，以及tps_r时间序列，针对每个active_joint构造三次样条曲线。
+            #    以指定频率freq_r在三次样条曲线上采样，得到采样点上的关节位置/速度(位置一阶导)/加速度(位置二阶导)序列。
+            tps_r = np.matrix([0.5 * i for i in range(n_wps_r)]).transpose()    
+            t_r, p_r, v_r, a_r = WP_r.get_full_config(freq_r, tps_r, wps_r, vel_wps_r, acc_wps_r)
+            WP_r.plot_spline(t_r, p_r, v_r, a_r)      
+          
+            # 4. 基于步骤3得到的关节位置/速度/加速度序列，以及标准参数，利用QR分解得到基参数索引idx_b和消元参数索引idx_e。
             idx_e, idx_b = self._get_idx_from_random(p_r, v_r, a_r)
-            logging.info(f"Computed {len(idx_b)} base parameters")
+            self.logger.info(f"Computed {len(idx_b)} base parameters successfully")
 
             return idx_e, idx_b
 
         except Exception as e:
-            logging.error(f"Error computing base indices: {e}")
+            self.logger.error(f"Error computing base indices: {e}")
             raise
 
     def _get_idx_from_random(self, q, v, a) -> Tuple[np.ndarray, np.ndarray]:
         """Get indices of eliminate and base parameters."""
+        # 堆叠矩阵
         W = build_regressor_basic(self.robot, q, v, a, self.identif_config)
+        # 全量惯性参数
         self.standard_parameter = get_standard_parameters(
             self.robot.model, self.identif_config
         )
@@ -102,9 +109,14 @@ class BaseParameterComputer:
                 self.model, self.identif_config.get("custom_parameters", {})
             )
             self.standard_parameter.update(self.custom_parameters)
+        
+        # 基于回归矩阵的信息来判断哪些参数是可辨识的。如果一个参数在给定的运动轨迹下没有足够强的“激发”，
+        # 那么它的系数在最小二乘辨识中会非常不确定，甚至可能导致病态问题。通过消除这些弱激发的参数，可
+        # 以提高辨识结果的质量和稳定性。
         idx_e_, par_r_ = get_index_eliminate(W, self.standard_parameter, tol_e=0.001)
         # Convert to numpy arrays
         idx_e_ = np.array(idx_e_, dtype=int)
+        # 据提供的索引列表，从原始的回归矩阵 W 中删除指定的列 ，从而构建一个简化（或称“缩减”）的回归矩阵
         W_e_ = build_regressor_reduced(W, idx_e_)
         idx_base_ = get_baseIndex(W_e_, par_r_)
         idx_base_ = np.array(idx_base_, dtype=int)

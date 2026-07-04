@@ -77,7 +77,6 @@ class BaseOptimalTrajectory:
         """
         self.robot = robot
         self.model = self.robot.model
-        self.active_joints = active_joints
 
         # Set up logger (configuration should be done by application, not library)
         self.logger = logging.getLogger(__name__)
@@ -86,6 +85,8 @@ class BaseOptimalTrajectory:
         self.trajectory_config, self.identif_config = load_param(
             self.robot, config_file
         )
+        
+        self.active_joints = self.identif_config["active_joints"]
 
         # Backend selection with precedence:
         # 1. Explicit programmatic argument (highest)
@@ -112,30 +113,17 @@ class BaseOptimalTrajectory:
         n_active_joints = len(self.active_joints)
         self.soft_lim_pool = np.full((3, n_active_joints), self.trajectory_config["soft_lim"])
 
-        self.logger.info(f"Initializing specialized component: cubic spline, waypoint generation, base parameter computer, constraint manager")
-
-        # Initialize cubic spline and waypoint generation
-        self.CB = CubicSpline(
-            self.robot,
-            self.trajectory_config["n_wps"],
-            self.active_joints,
-            self.trajectory_config["soft_lim"],
-        )
-        self.WP = WaypointsGeneration(
-            self.robot,
-            self.trajectory_config["n_wps"],
-            self.active_joints,
-            self.trajectory_config["soft_lim"],
-        )
+        self.logger.info(f"Initializing specialized component")
 
         self.base_computer = BaseParameterComputer(
-            self.robot, self.identif_config, self.active_joints, self.soft_lim_pool
-        )
-        self.constraint_manager = TrajectoryConstraintManager(
-            self.robot, self.CB, self.trajectory_config, self.identif_config
-        )
+            self.robot, self.identif_config, self.soft_lim_pool)
+        # self.constraint_manager = TrajectoryConstraintManager(
+        #     self.robot, self.CB, self.trajectory_config, self.identif_config
+        # )
 
         # Compute base parameters
+        # idx_e: 基于回归矩阵信息判断需要缩减的惯性参数的索引
+        # idx_b: 基本惯性参数索引
         self.idx_e, self.idx_b = self.base_computer.compute_base_indices()
 
         self.logger.info(f"BaseOptimalTrajectory initialized with {len(self.idx_b)} base parameters")
@@ -150,19 +138,22 @@ class BaseOptimalTrajectory:
         Returns:
             Dict containing trajectories and optimization info
         """
-        self.logger.info(
-            f"Starting optimal trajectory generation with {stack_reps} segments..."
-        )
+        self.logger.info(f"Starting optimal trajectory generation with {stack_reps} segments...")
 
         try:
-            # Initialize
-            self.WP.gen_rand_pool(self.soft_lim_pool)
-            wp_init = np.zeros(len(self.CB.act_idxq))
-            vel_wp_init = np.zeros(len(self.CB.act_idxv))
-            acc_wp_init = np.zeros(len(self.CB.act_idxv))
+            self.WP = WaypointsGeneration(
+                self.robot,
+                self.trajectory_config["n_wps"],
+                self.active_joints,
+                self.soft_lim_pool,
+            )
+            self.WP.gen_rand_pool()
+            wp_init = np.zeros(len(self.WP.act_idxq))       
+            vel_wp_init = np.zeros(len(self.WP.act_idxv))
+            acc_wp_init = np.zeros(len(self.WP.act_idxv))
 
             # Random initial position
-            for idx in range(len(self.CB.act_idxq)):
+            for idx in range(len(self.WP.act_idxq)):
                 wp_init[idx] = np.random.choice(self.WP.pool_q[:, idx], 1)[0]
 
             W_stack = None

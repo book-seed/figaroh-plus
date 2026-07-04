@@ -61,7 +61,14 @@ class RegressorBuilder:
         return x
 
     def _get_nonzero_inertias(self) -> List[int]:
-        """Get indices of bodies with non-zero mass."""
+        """
+        Get indices of bodies with non-zero mass.
+        在机器人动力学和参数辨识中，质量为零的连杆通常代表虚拟连杆或固定连接，
+        它们不会对机器人的动力学方程产生影响。通过筛选出具有非零质量的连杆，可以：
+        - 简化动力学计算 : 忽略零质量的连杆可以减少计算量。
+        - 专注于物理相关的参数 : 在进行参数辨识时，我们通常只对具有物理意义（即有质量）的连杆的参数感兴趣。
+        - 避免数值问题 : 某些动力学计算可能对零质量的物体敏感，提前过滤可以避免潜在的数值不稳定。
+        """
         return [i for i, inertia in enumerate(self.robot.model.inertias.tolist()) 
                 if inertia.mass != 0]
 
@@ -174,7 +181,7 @@ def build_regressor_basic(robot, q, v, a, identif_config, tau=None):
         has_friction=identif_config.get("has_friction", False),
         has_actuator_inertia=identif_config.get("has_actuator_inertia", False),
         has_joint_offset=identif_config.get("has_joint_offset", False),
-        is_joint_torques=identif_config.get("is_joint_torques", True),
+        is_joint_torques=identif_config.get("is_joint_torques", True),   
         is_external_wrench=identif_config.get("is_external_wrench", False),
         force_torque=identif_config.get("force_torque", None),
         additional_columns=additional_columns

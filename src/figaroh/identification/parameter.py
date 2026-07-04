@@ -247,23 +247,10 @@ def get_standard_parameters(
     #     "Ixx", "Ixy", "Ixz", "Iyy", "Iyz", "Izz",
     #     "mx", "my", "mz", "m"
     # ]
-    inertial_params = [
-        "m",
-        "mx",
-        "my",
-        "mz",
-        "Ixx",
-        "Ixy",
-        "Iyy",
-        "Ixz",
-        "Iyz",
-        "Izz",
-    ]
+    inertial_params = ["m", "mx", "my", "mz", "Ixx", "Ixy", "Iyy", "Ixz", "Iyz", "Izz"]
 
     # Extract and rearrange inertial parameters for each link
-    assert (
-        len(model.inertias) == model.njoints
-    ), "Inertia count mismatch with joints"
+    assert (len(model.inertias) == model.njoints), "Inertia count mismatch with joints"
     for link_idx, jname in enumerate(model.names[1:]):
         # Get dynamic parameters from Pinocchio (in Pinocchio order)
         # Returns the representation of the matrix as a vector of dynamic
@@ -284,7 +271,6 @@ def get_standard_parameters(
         for param_name in inertial_params:
             params.append(f"{param_name}_{jname}")
         phi.extend(reordered_params)
-
 
     return dict(zip(params, phi))
 
