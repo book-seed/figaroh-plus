@@ -49,21 +49,23 @@ class TrajectoryConstraintManager:
         cl, cu = [], []
 
         # Position constraint bounds
-        for i in range(1, self.n_wps):
+        # TODO: 此处的位置只考虑了对路点的约束，而没有考虑对整个轨迹的约束。是否需要在整个轨迹上进行位置约束？
+        for _ in range(1, self.n_wps):
             cl.extend(self.CB.lower_q)
             cu.extend(self.CB.upper_q)
 
         # Velocity constraint bounds
-        for j in range(Ns):
+        for _ in range(Ns):
             cl.extend(self.CB.lower_dq)
             cu.extend(self.CB.upper_dq)
 
         # Torque constraint bounds
-        for j in range(Ns):
+        for _ in range(Ns):
             cl.extend(self.CB.lower_effort)
             cu.extend(self.CB.upper_effort)
 
         # Collision constraint bounds
+        # TODO: 碰撞对应该定义在SRDF中，需要看一下pinocchio关于碰撞的接口，当前暂时没有定义碰撞对
         n_cols = len(self.robot.geom_model.collisionPairs)
         cl.extend([0.01] * n_cols * (self.n_wps - 1))  # 1 cm margin
         cu.extend([2 * 1e19] * n_cols * (self.n_wps - 1))  # no upper limit

@@ -27,6 +27,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from typing import Dict, List, Tuple, Any
 
+from numpy.matlib import False_
+
 # Setup logger for this module
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -117,9 +119,6 @@ class BaseOptimalTrajectory:
 
         self.base_computer = BaseParameterComputer(
             self.robot, self.identif_config, self.soft_lim_pool)
-        # self.constraint_manager = TrajectoryConstraintManager(
-        #     self.robot, self.CB, self.trajectory_config, self.identif_config
-        # )
 
         # Compute base parameters
         # idx_e: 基于回归矩阵信息判断需要缩减的惯性参数的索引
@@ -147,26 +146,39 @@ class BaseOptimalTrajectory:
                 self.active_joints,
                 self.soft_lim_pool,
             )
+            
+            self.constraint_manager = TrajectoryConstraintManager(
+            self.robot, self.WP, self.trajectory_config, self.identif_config
+            )
+            
             self.WP.gen_rand_pool()
             wp_init = np.zeros(len(self.WP.act_idxq))       
             vel_wp_init = np.zeros(len(self.WP.act_idxv))
             acc_wp_init = np.zeros(len(self.WP.act_idxv))
 
-            # Random initial position
+            # (optional 1) : Random initial position
+            # for idx in range(len(self.WP.act_idxq)):
+            #     wp_init[idx] = np.random.choice(self.WP.pool_q[:, idx], 1)[0]
+                
+            # (optional 2) : Initialize wp_init to the midpoint of joint limits
+            # for idx in range(len(self.WP.act_idxq)):
+            #     wp_init[idx] = (self.WP.lower_q[idx] + self.WP.upper_q[idx]) / 2.0
+            
+            #（optional 3）：缩放随机数范围，确保不会超限位。缩放因子：0.8
+            # Use a fixed RNG seed so the generated random waypoints are repeatable.
+            rng = np.random.default_rng(0)
             for idx in range(len(self.WP.act_idxq)):
-                wp_init[idx] = np.random.choice(self.WP.pool_q[:, idx], 1)[0]
+                center = (self.WP.lower_q[idx] + self.WP.upper_q[idx]) / 2
+                half_range = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.8
+                wp_init[idx] = rng.uniform(center - half_range, center + half_range)
 
             W_stack = None
 
             for s_rep in range(stack_reps):
-                self.logger.info(
-                    f"Optimizing segment {s_rep + 1}/{stack_reps}"
-                )
+                self.logger.info(f"Optimizing segment {s_rep + 1}/{stack_reps}")
                 self.logger.info(f"Initial waypoint: {wp_init}")
 
-                success = self._solve_segment(
-                    s_rep, wp_init, vel_wp_init, acc_wp_init, W_stack
-                )
+                success = self._solve_segment(s_rep, wp_init, vel_wp_init, acc_wp_init, W_stack)
 
                 if not success:
                     self.logger.error(f"Failed to solve segment {s_rep + 1}")
@@ -201,10 +213,11 @@ class BaseOptimalTrajectory:
                 (self.trajectory_config["n_wps"] - 1, len(self.active_joints)),
             )
             wps = np.vstack((wp_init, wps_X))
+            # 对于UR臂，wps矩阵维度为[n_joints,n_wps]
             wps = wps.transpose()
 
             # Generate full trajectory configuration
-            t_f, p_f, v_f, a_f = self.CB.get_full_config(
+            t_f, p_f, v_f, a_f = self.WP.get_full_config(
                 self.trajectory_config["freq"], tps, wps, vel_wps, acc_wps
             )
 
@@ -293,42 +306,52 @@ class BaseOptimalTrajectory:
         # a small perturbation (±0.05 rad) so the regressor isn't
         # degenerate (zero velocity → singular condition number).
         n_wps = self.trajectory_config["n_wps"]
-        n_act = len(self.CB.act_idxq)
-        wps_uniform = np.tile(wp_init, (n_wps, 1)).T  # (n_act, n_wps)
-        # Add gentle random variation to non-start waypoints
+        n_act = len(self.WP.act_idxq)
+        # 将wp_init(初始位置路点)在时间维度上复制n_wps次，形成一个(n_act, n_wps)形状的矩阵
+        wps_uniform = np.tile(wp_init, (n_wps, 1)).T  
+        # 为除了第一个路点之外的所有路点添加一个小的随机扰动（ ±0.05 rad ）。
+        # 这样做的目的是避免生成完全静止的轨迹（零速度），因为零速度可能导致回
+        # 归矩阵退化（条件数趋于无穷大），从而使参数辨识变得困难。
+        # 前面将wp_init向内压缩了80%，这个地方轨迹的波动不能超过行程一半的20%
+        threshold = np.zeros(len(self.WP.act_idxq))
+        for idx in range(len(self.WP.act_idxq)):
+            threshold[idx] = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.2
+            threshold[idx] = threshold[idx] if threshold[idx] < 0.05 else 0.05        
+        
         rng = np.random.default_rng(1)
-        wps_uniform[:, 1:] += rng.uniform(-0.05, 0.05, (n_act, n_wps - 1))
-        vel_uniform = np.zeros((n_act, n_wps))         # (n_act, n_wps)
+        wps_uniform[:, 1:] += rng.uniform(-threshold, threshold, (n_act, n_wps - 1))
+        # 速度和加速度路点初始化为零，表示这是一个接近静态的轨迹
+        vel_uniform = np.zeros((n_act, n_wps))         
         acc_uniform = np.zeros_like(vel_uniform)
-
+        # 生成时间点序列，每个路点之间的时间间隔由 self.trajectory_config["t_s"] 决定
         tps = np.matrix(
             [self.trajectory_config["t_s"] * i_wp
              for i_wp in range(self.trajectory_config["n_wps"])]
         ).transpose()
 
-        t_i, p_i, v_i, a_i = self.CB.get_full_config(
+        # 关节位置wps_uniform，速度vel_uniform，加速度acc_uniform，以及tps_r时间序列，
+        # 针对每个active_joint构造三次样条曲线。以指定频率“freq”在三次样条曲线上采样，
+        # 得到采样点上的关节位置/速度(位置一阶导)/加速度(位置二阶导)序列。
+        t_i, p_i, v_i, a_i = self.WP.get_full_config(
             self.trajectory_config["freq"], tps, wps_uniform, vel_uniform, acc_uniform,
         )
         tau_i = calc_torque(p_i.shape[0], self.robot, p_i, v_i, a_i)
         tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
-        is_constr_violated = self.CB.check_cfg_constraints(p_i, v_i, tau_i)
+        
+        # TODO: 后续添加路径的自碰撞检测 check_self_collision
+        is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
 
         if not is_constr_violated:
             self.logger.info("Uniform initial guess is feasible (static trajectory)")
             return wps_uniform, vel_uniform, acc_uniform, tps, t_i, p_i, v_i, a_i
 
         # ── Strategy 2: random search ──────────────────────────
-        self.logger.info(
-            "Uniform guess infeasible; trying random search "
-            "(max %d attempts)...", max_attempts,
-        )
+        self.logger.info("Uniform guess infeasible; trying random search "
+            "(max %d attempts)...", max_attempts,)
+        
         while is_constr_violated and count < max_attempts:
             count += 1
-            if count % 100 == 0:
-                self.logger.info(
-                    "Attempt %d/%d to find feasible initial trajectory...",
-                    count, max_attempts,
-                )
+            self.logger.info("Attempt %d/%d to find feasible initial trajectory...", count, max_attempts,)
 
             try:
                 # Generate random waypoints
@@ -343,7 +366,7 @@ class BaseOptimalTrajectory:
                 ).transpose()
 
                 # Get full configuration
-                t_i, p_i, v_i, a_i = self.CB.get_full_config(
+                t_i, p_i, v_i, a_i = self.WP.get_full_config(
                     self.trajectory_config["freq"], tps, wps, vel_wps, acc_wps
                 )
 
@@ -352,16 +375,14 @@ class BaseOptimalTrajectory:
                     p_i.shape[0], self.robot, p_i, v_i, a_i
                 )
                 tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
-                is_constr_violated = self.CB.check_cfg_constraints(p_i, v_i, tau_i)
+                is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
 
             except Exception as e:
                 self.logger.warning(f"Error in attempt {count}: {e}")
                 continue
 
         if count >= self.trajectory_config["max_attempts"]:
-            self.logger.warning(
-                f"Could not find feasible initial trajectory after {self.trajectory_config['max_attempts']} attempts"
-            )
+            raise RuntimeError("Could not find feasible initial trajectory after max_attempts")
         else:
             self.logger.info(f"Found feasible initial trajectory after {count} attempts")
 
@@ -371,6 +392,12 @@ class BaseOptimalTrajectory:
         """Solve a single trajectory segment."""
         try:
             # Generate feasible initial guess
+            # wps vel_wps acc_wps [len(self.WP.act_idxq), trajectory_config["n_wps"]]
+            # tps [trajectory_config["n_wps"], 1]
+            # 按照设定的采样频率从三次样条曲线中采样。总时间 max(tps) == max(t_i) == trajectory_config["t_s"] * (n_wps - 1)
+            # 设定 N 为采样数量
+            # t_i [N, 1]
+            # p_i v_i a_i [N, len(self.WP.act_idxq)]
             wps, vel_wps, acc_wps, tps, t_i, p_i, v_i, a_i = self._generate_feasible_initial_guess(
                 wp_init, vel_wp_init, acc_wp_init
             )
@@ -448,7 +475,7 @@ class BaseOptimalTrajectory:
             results_manager.plot_optimal_trajectory_results(
                 trajectories=self.results,
                 condition_number=condition_number,
-                joint_names=[f"Joint {i+1}" for i in range(len(self.CB.act_Jid))],
+                joint_names=[f"Joint {i+1}" for i in range(len(self.WP.act_Jid))],
                 title="Optimal Trajectory Generation Results"
             )
 
@@ -456,7 +483,7 @@ class BaseOptimalTrajectory:
             # Fallback to existing plotting
             try:
                 # Create subplots
-                n_joints = len(self.CB.act_Jid)
+                n_joints = len(self.WP.act_Jid)
                 fig, axes = plt.subplots(n_joints, 3, sharex=True, figsize=(15, 2*n_joints))
                 if n_joints == 1:
                     axes = axes.reshape(1, -1)
@@ -523,8 +550,8 @@ class BaseOptimalTrajectory:
             results_dict = {
                 'trajectory_segments': len(self.results['T_F']),
                 'condition_number': float(condition_number),
-                'joint_names': [f"Joint {i+1}" for i in range(len(self.CB.act_Jid))],
-                'configuration': self.CB.identif_config,
+                'joint_names': [f"Joint {i+1}" for i in range(len(self.WP.act_Jid))],
+                'configuration': self.WP.identif_config,
                 'time_segments': [t.tolist() for t in self.results['T_F']],
                 'position_segments': [p.tolist() for p in self.results['P_F']],
                 'velocity_segments': [v.tolist() for v in self.results['V_F']],
@@ -560,7 +587,7 @@ class BaseOptimalTrajectory:
             results_dict = {
                 'trajectory_segments': len(self.results['T_F']),
                 'condition_number': float(condition_number),
-                'joint_count': len(self.CB.act_Jid)
+                'joint_count': len(self.WP.act_Jid)
             }
 
             with open(os.path.join(output_dir, filename), 'w') as f:
@@ -611,10 +638,8 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         if not hasattr(self, '_initial_wps'):
             # Return zeros as fallback
             return [0.0] * (self.n_joints * (self.n_wps - 1))
-        
         X0 = self._initial_wps[:, range(1, self.n_wps)]
-        return np.reshape(X0.transpose(), 
-                         (self.n_joints * (self.n_wps - 1),)).tolist()
+        return np.reshape(X0.transpose(), (self.n_joints * (self.n_wps - 1),)).tolist()
     
     def objective(self, X: np.ndarray) -> float:
         """Objective function: condition number of base regressor matrix."""

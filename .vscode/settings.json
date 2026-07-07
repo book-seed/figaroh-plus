@@ -3,5 +3,6 @@
     "python.analysis.extraPaths": [
         "${workspaceFolder}/figaroh-examples",
         "${workspaceFolder}/.pixi/envs/default/lib/python3.12/site-packages"
-    ]
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }

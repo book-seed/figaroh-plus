@@ -231,8 +231,6 @@ class CubicSpline:
         self.upper_effort = self.rmodel.effortLimit[self.act_idxv]
         self.lower_effort = -self.rmodel.effortLimit[self.act_idxv]
         
-        # if soft_limit_pool is None:
-        #     soft_limit_pool = np.zeros((3, len(self.act_idxq)))
         assert np.array(self.soft_lim_pool).shape == (
             3, len(self.act_idxq),
         ), "input a vector of soft limit pool with a shape of (3, len(activejoints)"
@@ -398,7 +396,7 @@ class CubicSpline:
 
         return t, q_full, dq_full, ddq_full
 
-    def check_cfg_constraints(self, q, v=None, tau=None, soft_lim=0):
+    def check_cfg_constraints(self, q, v=None, tau=None):
         """
         Check joint constraints violation for trajectory configurations.
         
@@ -444,55 +442,32 @@ class CubicSpline:
         __isViolated = False
         for i in range(q.shape[0]):
             for j in self.act_idxq:
-                delta_lim = soft_lim * abs(
-                    self.rmodel.upperPositionLimit[j]
-                    - self.rmodel.lowerPositionLimit[j]
-                )
-                if q[i, j] > self.rmodel.upperPositionLimit[j] - delta_lim:
-                    logger.warning("Joint q %d upper limit violated!", j)
-                    __isViolated_pos = True
-
-                elif q[i, j] < self.rmodel.lowerPositionLimit[j] + delta_lim:
-                    logger.warning(
-                        "Joint position idx_q %d lower limit violated!", j
-                    )
+                if q[i, j] > self.upper_q[j] or q[i, j] < self.lower_q[j]:
+                    # logger.warning("Joint q %d position limit violated!", j)
                     __isViolated_pos = True
                 else:
                     __isViolated_pos = False
                 __isViolated = __isViolated or __isViolated_pos
-                # print(__isViolated)
         if v is not None:
             for i in range(v.shape[0]):
                 for j in self.act_idxv:
-                    if abs(v[i, j]) > (1 - soft_lim) * abs(
-                        self.rmodel.velocityLimit[j]
-                    ):
-                        logger.warning(
-                            "Joint vel idx_v %d limits violated!", j
-                        )
+                    if v[i, j] > self.upper_dq[j] or v[i, j] < self.lower_dq[j]:
+                        # logger.warning("Joint vel idx_v %d limits violated!", j)
                         __isViolated_vel = True
                     else:
                         __isViolated_vel = False
                     __isViolated = __isViolated or __isViolated_vel
-                # print(__isViolated)
         if tau is not None:
             for i in range(tau.shape[0]):
                 for j in self.act_idxv:
-                    if abs(tau[i, j]) > (1 - soft_lim) * abs(
-                        self.rmodel.effortLimit[j]
-                    ):
-                        logger.warning(
-                            "Joint effort idx_v %d limits violated!", j
-                        )
+                    if tau[i, j] > self.upper_effort[j] or tau[i, j] < self.lower_effort[j]:
+                        # logger.warning("Joint effort idx_v %d limits violated!", j)
                         __isViolated_eff = True
-                    else:
+                    else:   
                         __isViolated_eff = False
                     __isViolated = __isViolated or __isViolated_eff
-                    # print(__isViolated)
         if not __isViolated:
-            logger.info(
-                "SUCCEEDED to generate waypoints for a feasible initial cubic spline"
-            )
+            logger.info("SUCCEEDED to generate waypoints for a feasible initial cubic spline")
         else:
             logger.warning("FAILED to generate a feasible cubic spline")
         return __isViolated
@@ -597,7 +572,7 @@ class WaypointsGeneration(CubicSpline):
         """
         super().__init__(robot, num_waypoints, active_joints, soft_lim_pool)
 
-        self.n_set = 10  # size of waypoints pool
+        self.n_set = 20  # size of waypoints pool
         self.pool_q = np.zeros((self.n_set, len(self.act_idxq)))
         self.pool_dq = np.zeros((self.n_set, len(self.act_idxv)))
         self.pool_ddq = np.zeros((self.n_set, len(self.act_idxv)))
@@ -680,7 +655,7 @@ class WaypointsGeneration(CubicSpline):
                         )
                         repeat_ = self.check_repeat_wp(list(vel_wps_rand[:, i]))
         if vel_wp_init is not None:
-            acc_wps_rand[0, :] = vel_wp_init
+            acc_wps_rand[0, :] = acc_wp_init
             if not acc_set_zero:
                 for i in range(len(self.act_idxv)):
                     repeat_ = True
@@ -739,9 +714,7 @@ def init_robot(robot):
 
 def calc_torque(N, robot, q, v, a):
     tau = np.zeros(robot.model.nv * N)
-    for i in range(N):
-        for j in range(robot.model.nv):
-            tau[j * N + i] = pin.rnea(
-                robot.model, robot.data, q[i, :], v[i, :], a[i, :]
-            )[j]
+    for i in range(N): # 第i组路点
+        for j in range(robot.model.nv): #第j个关节
+            tau[j * N + i] = pin.rnea(robot.model, robot.data, q[i, :], v[i, :], a[i, :])[j]
     return tau

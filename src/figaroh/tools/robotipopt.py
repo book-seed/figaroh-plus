@@ -759,7 +759,12 @@ class RobotIPOPTSolver:
                 
             self.logger.info(f"Setting up IPOPT problem: {self.problem.name}")
             
-            # Get problem dimensions and bounds
+            # 对于例程中的UR臂，_initial_wps是一个二维数组，表示初始的关节角度路径点。
+            # 它的形状是(n_joints, n_wps)，其中n_joints是关节数量，n_wps是路径点数量。
+            # 通过选择[:, range(1, self.n_wps)]，我们获取了从第二个路径点到最后一个路
+            # 径点的所有关节角度数据，并将其转置为(n_wps-1, n_joints)的形状，然后再展平
+            # 为一维数组作为优化变量的初始猜测(行优先)。
+            # TODO: 为什么从第二个路径点开始？
             x0 = self.problem.get_initial_guess()
             lb, ub = self.problem.get_variable_bounds()
             cl, cu = self.problem.get_constraint_bounds()
