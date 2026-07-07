@@ -88,7 +88,6 @@ References:
 # from ndcurves import piecewise, ndcurves.exact_cubic,
 # ndcurves.curve_constraints
 import logging
-from pickle import NONE
 
 import ndcurves
 import numpy as np

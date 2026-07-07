@@ -55,7 +55,7 @@ def load_param(robot, config_file: str) -> Tuple[Dict[str, Any], Any]:
             identif_config = unified_to_legacy_identif_config(robot, unified_identif_config)
             unified_traj_config = create_task_config(robot, unified_config, "optimal_trajectory")
             trajectory_config = create_config(unified_traj_config)
-            aa = 1
+
         else:
             logger.info("Detected legacy configuration format")
             # Use legacy format parsing
