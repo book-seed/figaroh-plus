@@ -534,13 +534,13 @@ class ResultsManager:
 
             self.logger.info(f"Results saved to {output_dir}")
             for fmt, path in saved_files.items():
-                self.logger.info(f"{fmt.upper()}:{path}")
+                self.logger.info(f"{fmt.lower()}:{path}")
 
             return saved_files
 
         except Exception as e:
             self.logger.error(f"Error saving results: {e}")
-            raise FigarohExampleError(f"Failed to save results: {e}")
+            raise FigarohExampleError(f"Failed to save results: {e}")    
 
     # Helper plotting methods
     def _plot_pose_comparison(self, ax, measured, estimated, title, ylabel, outliers=None):

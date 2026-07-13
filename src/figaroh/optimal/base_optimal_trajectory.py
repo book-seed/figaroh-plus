@@ -425,59 +425,20 @@ class BaseOptimalTrajectory:
         try:
             from figaroh.utils.results_manager import ResultsManager
 
-            output_dir = getattr(self, '_latest_saved_results_dir', 'results')
-            pkl_path = None
-            if hasattr(self, '_latest_saved_results') and self._latest_saved_results.get('pkl'):
-                pkl_path = Path(self._latest_saved_results['pkl'])
-            else:
-                pkl_dir = Path(output_dir)
-                if pkl_dir.exists():
-                    pkl_candidates = sorted(
-                        pkl_dir.glob('*.pkl'),
-                        key=lambda p: p.stat().st_mtime,
-                        reverse=True,
-                    )
-                    pkl_path = pkl_candidates[0] if pkl_candidates else None
-
-            if pkl_path is None or not pkl_path.exists():
-                self.logger.error("No saved .pkl file found for plotting")
-                return
-
-            with open(pkl_path, 'rb') as f:
-                loaded_results = pickle.load(f)
-
-            if 'T_F' in loaded_results:
-                trajectories = loaded_results
-            elif 'time_segments' in loaded_results:
-                trajectories = {
-                    'T_F': [np.array(t) for t in loaded_results.get('time_segments', [])],
-                    'P_F': [np.array(p) for p in loaded_results.get('position_segments', [])],
-                    'V_F': [np.array(v) for v in loaded_results.get('velocity_segments', [])],
-                    'A_F': [np.array(a) for a in loaded_results.get('acceleration_segments', [])],
-                }
-            else:
-                self.logger.error(f"Unsupported plot data format in {pkl_path}")
-                return
-
+            # Initialize results manager
             robot_name = getattr(self, 'robot_name', self.robot.model.name)
             results_manager = ResultsManager('optimal_trajectory', robot_name)
 
+            # Calculate overall condition number
             condition_number = getattr(self, 'final_condition_number', 0.0)
-            if condition_number == 0.0:
-                if isinstance(loaded_results, dict):
-                    condition_number = loaded_results.get('condition_number', condition_number)
-                    if condition_number == 0.0 and 'condition_number_history' in loaded_results:
-                        history = loaded_results.get('condition_number_history', [])
-                        if history and isinstance(history, list) and history[-1]:
-                            try:
-                                condition_number = float(history[-1][-1])
-                            except Exception:
-                                pass
+            if condition_number == 0.0 and hasattr(self, 'results') and 'condition_numbers' in self.results:
+                condition_number = self.results['condition_numbers'][-1] if self.results['condition_numbers'] else 0.0
 
+            # Plot using unified manager
             results_manager.plot_optimal_trajectory_results(
-                trajectories=trajectories,
+                trajectories=self.results,
                 condition_number=condition_number,
-                joint_names=[f"Joint {i+1}" for i in range(len(self.identif_config["act_Jid"]))],
+                joint_names=[f"Joint {i+1}" for i in range(len(self.CB.act_Jid))],
                 title="Optimal Trajectory Generation Results"
             )
 
@@ -554,12 +515,12 @@ class BaseOptimalTrajectory:
                             continue
                     cond_history_per_segment.append(row)
 
+            # TODO: 序列化的时候configuration会出错，所以注释掉了，后面看会不会用到
             results_dict = {
                 'trajectory_segments': len(self.results['T_F']),
-                'condition_number': (cond_history_per_segment[-1][-1]
-                                     if cond_history_per_segment and cond_history_per_segment[-1] else 0.0),
+                'condition_number': (cond_history_per_segment[-1][-1]),
                 'joint_names': [f"Joint {i+1}" for i in range(len(self.identif_config["act_Jid"]))],
-                # 'configuration': self.identif_config,  # TODO: 序列化的时候会出错，所以注释掉了，后面看会不会用到
+                # 'configuration': self.identif_config,  
                 'time_segments': [t.tolist() for t in self.results['T_F']],
                 'position_segments': [p.tolist() for p in self.results['P_F']],
                 'velocity_segments': [v.tolist() for v in self.results['V_F']],
@@ -567,44 +528,13 @@ class BaseOptimalTrajectory:
                 'condition_number_history': cond_history_per_segment
             }
 
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_prefix = f"{robot_name}_optimal_trajectory_{timestamp}"
-
-            pkl_files = results_manager.save_results(self.results, output_dir, file_prefix=file_prefix, save_formats=['pkl'])
-            yaml_files = results_manager.save_results(results_dict, output_dir, file_prefix=file_prefix, save_formats=['yaml'])
-
-            saved_files = {**pkl_files, **yaml_files}
-            self._latest_saved_results = saved_files
-            self._latest_saved_results_dir = output_dir
-
+            saved_files = results_manager.save_results(results_dict, output_dir, save_formats=['pkl', 'yaml'])
             self.logger.info(f"Trajectory results saved successfully")
             return saved_files
-
-        except ImportError:
-            # Fallback to basic saving
-            import os
-            import yaml
-
-            os.makedirs(output_dir, exist_ok=True)
-
-            # Basic results dictionary
-            robot_name = getattr(self, 'robot_name', self.robot.model.name)
-            filename = f"{robot_name}_optimal_trajectory.yaml"
-
-            condition_number = getattr(self, 'final_condition_number', 0.0)
-            results_dict = {
-                'trajectory_segments': len(self.results['T_F']),
-                'condition_number': float(condition_number),
-                'joint_count': len(self.WP.act_Jid)
-            }
-
-            with open(os.path.join(output_dir, filename), 'w') as f:
-                yaml.dump(results_dict, f, default_flow_style=False)
-
-            self.logger.info(f"Basic results saved to {output_dir}/{filename}")
-            return {'yaml': os.path.join(output_dir, filename)}
-
+        
+        except Exception as e:
+            self.logger.error(f"Error saving results: {e}")
+            raise
 
 class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
     """
