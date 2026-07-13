@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 import logging
+import pickle
 
 try:
     import matplotlib.pyplot as plt
@@ -42,7 +43,7 @@ class ResultsManager:
 
     # Color schemes for consistent visualization
     COLORS = {
-        'measured': '#1f77b4',      # Blue
+        'meured': '#1f77b4',      # Blue
         'identified': '#ff7f0e',    # Orange
         'calibrated': '#2ca02c',    # Green
         'optimal': '#d62728',       # Red
@@ -367,7 +368,8 @@ class ResultsManager:
         trajectories: Dict[str, Any],
         condition_number: float,
         joint_names: Optional[List[str]] = None,
-        title: str = "Optimal Trajectory Results"
+        title: str = "Optimal Trajectory Results",
+        output_dir: str = "results"
     ) -> None:
         """
         Plot optimal trajectory generation results.
@@ -377,6 +379,7 @@ class ResultsManager:
             condition_number: Final condition number achieved
             joint_names: Names of robot joints
             title: Plot title
+            output_dir: Directory where the figure will be saved
         """
         if not HAS_MATPLOTLIB:
             self.logger.warning("Cannot plot: matplotlib not available")
@@ -442,6 +445,14 @@ class ResultsManager:
             fig.suptitle(f"{self.robot_name.upper()} {title}\nCondition Number: {condition_number:.2e}", 
                         fontsize=16)
             plt.tight_layout()
+
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            save_name = f"{self.robot_name}_optimal_trajectory_results.png"
+            save_path = output_path / save_name
+            fig.savefig(save_path, dpi=150, bbox_inches='tight')
+            self.logger.info(f"Optimal trajectory plot saved to {save_path}")
+
             plt.show()
 
         except Exception as e:
@@ -466,6 +477,9 @@ class ResultsManager:
         Returns:
             Dictionary mapping format to file path
         """
+        
+        # TODO: 当前仅确保了yaml和pkl的保存，其他格式的保存需要进一步确认是否正确
+        
         try:
             # Use self.result if no results provided
             if results is None:
@@ -507,15 +521,20 @@ class ResultsManager:
                     file_path = output_path / f"{file_prefix}.npz"
                     self._save_npz(results, file_path)
                     saved_files['npz'] = str(file_path)
+                    
+                elif fmt.lower() == 'pkl':
+                    file_path = output_path / f"{file_prefix}.pkl"
+                    self._save_pkl(results, file_path)
+                    saved_files['pkl'] = str(file_path)
 
             # Save metadata
-            metadata_path = output_path / f"{file_prefix}_metadata.yaml"
-            self._save_metadata(results, metadata_path)
-            saved_files['metadata'] = str(metadata_path)
+            # metadata_path = output_path / f"{file_prefix}_metadata.yaml"
+            # self._save_metadata(results, metadata_path)
+            # saved_files['metadata'] = str(metadata_path)
 
             self.logger.info(f"Results saved to {output_dir}")
             for fmt, path in saved_files.items():
-                self.logger.info(f"  {fmt.upper()}: {path}")
+                self.logger.info(f"{fmt.upper()}:{path}")
 
             return saved_files
 
@@ -701,6 +720,20 @@ class ResultsManager:
     def _save_npz(self, results, file_path):
         """Save results to NumPy compressed format."""
         np.savez_compressed(file_path, **results)
+
+    def _save_pkl(self, results, file_path):
+        """Save results to pickle format. Attempts to pickle raw objects; if that fails,
+        falls back to pickling a serialization-safe representation produced by
+        `_convert_for_serialization`.
+        """
+        try:
+            with open(file_path, 'wb') as f:
+                pickle.dump(results, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            self.logger.warning(f"Pickle raw save failed: {e}. Saving converted fallback.")
+            safe = self._convert_for_serialization(results)
+            with open(file_path, 'wb') as f:
+                pickle.dump(safe, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     def _save_metadata(self, results, file_path):
         """Save metadata about the results."""

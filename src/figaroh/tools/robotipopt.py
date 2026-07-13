@@ -611,10 +611,19 @@ class BaseOptimizationProblem(ABC):
         """
         self.iteration_data['iterations'].append(iter_count)
         self.iteration_data['obj_values'].append(obj_value)
-        self.iteration_data['constraint_violations'].append(
-            max(inf_pr, inf_du)
-        )
+        self.iteration_data['constraint_violations'].append(max(inf_pr, inf_du))
         
+        # Log a concise per-iteration summary for visibility during solves
+        try:
+            self.logger.info(
+                f"IPOPT iter {iter_count}: obj={obj_value:.6e}, "
+                f"inf_pr={inf_pr:.2e}, inf_du={inf_du:.2e}, mu={mu:.2e}"
+            )
+        except Exception:
+            # Fallback to print if logger fails for any reason
+            print(f"IPOPT iter {iter_count}: obj={obj_value:.6e}, "
+                  f"inf_pr={inf_pr:.2e}, inf_du={inf_du:.2e}, mu={mu:.2e}")
+
         return True
 
 
@@ -715,16 +724,13 @@ class RobotIPOPTSolver:
     def solve(self) -> Tuple[bool, Dict[str, Any]]:
         """
         Solve the optimization problem.
-        
         Performs the complete optimization process including problem setup,
-        IPOPT configuration, solving, and result analysis. The method
-        handles all IPOPT interactions and provides comprehensive error
-        handling and logging.
+        IPOPT configuration, solving, and result analysis. The method handles all 
+        IPOPT interactions and provides comprehensive error handling and logging.
         
         Returns:
             Tuple[bool, Dict[str, Any]]: A tuple containing:
-                - success (bool): True if optimization succeeded,
-                  False otherwise
+                - success (bool): True if optimization succeeded, False otherwise
                 - results (Dict[str, Any]): Dictionary containing:
                     * 'x_opt': Optimal solution vector
                     * 'obj_val': Final objective function value
@@ -738,24 +744,22 @@ class RobotIPOPTSolver:
                     * 'success': Copy of success flag for convenience
         
         Raises:
-            Exception: If critical errors occur during problem setup
-                      or solving. Non-critical errors are caught and
-                      returned in results.
+            Exception: If critical errors occur during problem setup or solving. 
+                       Non-critical errors are caught and returned in results.
         
         Note:
             IPOPT status codes for success: -1 (solved to acceptable level),
             0 (solved), 1 (solved to acceptable level). All other codes
             indicate various types of failures or early termination.
         """
+        logging.getLogger('cyipopt').setLevel(logging.WARNING)
+
         try:
             # Import cyipopt only when needed
             try:
                 import cyipopt
             except ImportError:
-                raise ImportError(
-                    "cyipopt is required for IPOPT optimization. "
-                    "Install with: pip install cyipopt"
-                )
+                raise ImportError("cyipopt is required for IPOPT optimization. Install with: pip install cyipopt")
                 
             self.logger.info(f"Setting up IPOPT problem: {self.problem.name}")
             
@@ -764,15 +768,11 @@ class RobotIPOPTSolver:
             # 通过选择[:, range(1, self.n_wps)]，我们获取了从第二个路径点到最后一个路
             # 径点的所有关节角度数据，并将其转置为(n_wps-1, n_joints)的形状，然后再展平
             # 为一维数组作为优化变量的初始猜测(行优先)。
-            # TODO: 为什么从第二个路径点开始？
             x0 = self.problem.get_initial_guess()
             lb, ub = self.problem.get_variable_bounds()
             cl, cu = self.problem.get_constraint_bounds()
             
-            self.logger.info(
-                f"Problem dimensions: {len(x0)} variables, "
-                f"{len(cl)} constraints"
-            )
+            self.logger.info(f"Problem dimensions: {len(x0)} variables, {len(cl)} constraints")
             
             # Create IPOPT problem
             nlp = cyipopt.Problem(
@@ -799,16 +799,10 @@ class RobotIPOPTSolver:
             self.last_solution = x_opt
             self.last_info = info
             
-            # Analyze results
-            # Acceptable IPOPT exit codes
+            # Analyze results. Acceptable IPOPT exit codes
             success = info["status"] in [-1, 0, 1]
-            
-            self.logger.info(
-                f"Optimization completed in {solve_time:.2f} seconds"
-            )
-            self.logger.info(
-                f"Status: {info['status']} - {info['status_msg']}"
-            )
+            self.logger.info(f"Optimization completed in {solve_time:.2f} seconds")
+            self.logger.info(f"Status: {info['status']} - {info['status_msg']}")
             self.logger.info(f"Final objective: {info['obj_val']:.6e}")
             
             # Prepare results dictionary
@@ -824,10 +818,8 @@ class RobotIPOPTSolver:
                 'callback_data': self.problem.callback_data.copy(),
                 'ipopt_info': info
             }
-            
             # Store in history
             self.solve_history.append(results)
-            
             return success, results
             
         except Exception as e:

@@ -23,6 +23,8 @@ IPOPT-based optimization. This framework can be extended for different robots.
 
 import logging
 from abc import abstractmethod
+import pickle
+from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 from typing import Dict, List, Tuple, Any
@@ -37,11 +39,8 @@ from figaroh.tools.regressor import (
     build_regressor_reduced,
 )
 from figaroh.tools.qrdecomposition import build_baseRegressor
-from figaroh.utils.cubic_spline import (
-    CubicSpline,
-    WaypointsGeneration,
-    calc_torque,
-)
+from figaroh.utils.cubic_spline import WaypointsGeneration
+from figaroh.utils.pin_interface import calc_torque
 from figaroh.tools.robotipopt import (
     IPOPTConfig, BaseOptimizationProblem, RobotIPOPTSolver
 )
@@ -99,9 +98,6 @@ class BaseOptimalTrajectory:
             effective_backend = backend
         self._backend = create_backend(effective_backend, robot=robot)
 
-        # # Initialize components
-        # self.initialize()
-
         # Results storage
         self.results = {
             'T_F': [], 'P_F': [], 'V_F': [], 'A_F': [],
@@ -155,21 +151,20 @@ class BaseOptimalTrajectory:
             vel_wp_init = np.zeros(len(self.WP.act_idxv))
             acc_wp_init = np.zeros(len(self.WP.act_idxv))
 
-            # (optional 1) : Random initial position
-            # for idx in range(len(self.WP.act_idxq)):
-            #     wp_init[idx] = np.random.choice(self.WP.pool_q[:, idx], 1)[0]
-                
-            # (optional 2) : Initialize wp_init to the midpoint of joint limits
-            # for idx in range(len(self.WP.act_idxq)):
-            #     wp_init[idx] = (self.WP.lower_q[idx] + self.WP.upper_q[idx]) / 2.0
-            
-            #（optional 3）：缩放随机数范围，确保不会超限位。缩放因子：0.8
-            # Use a fixed RNG seed so the generated random waypoints are repeatable.
-            rng = np.random.default_rng(0)
+            # 从 pool_q 中随机选取满足 (center-half_range, center+half_range) 的值
+            # 缩放因子：0.8。若没有满足条件的样本，则从整个 pool_q 中随机选取。
+            rng = np.random.default_rng(100)
             for idx in range(len(self.WP.act_idxq)):
                 center = (self.WP.lower_q[idx] + self.WP.upper_q[idx]) / 2
                 half_range = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.8
-                wp_init[idx] = rng.uniform(center - half_range, center + half_range)
+                q_pool = np.asarray(self.WP.pool_q)[:, idx]
+                valid_q = q_pool[(q_pool >= (center - half_range)) & (q_pool <= (center + half_range))]
+                if valid_q.size == 0:
+                    raise RuntimeError(
+                        f"No pool samples within ({center - half_range:.6g}, {center + half_range:.6g}) "
+                        f"for joint index {idx}; pool size={q_pool.size}"
+                    )
+                wp_init[idx] = float(rng.choice(valid_q))
 
             W_stack = None
 
@@ -187,30 +182,20 @@ class BaseOptimalTrajectory:
                 if s_rep < stack_reps - 1:  # Not the last segment
                     wp_init, W_stack = self._prepare_next_segment()
 
-            self.logger.info(
-                f"Completed! Generated {len(self.results['T_F'])} trajectory segments"
-            )
-            self.results["final_regressor_shape"] = (
-                W_stack.shape if W_stack is not None else None
-            )
-
+            self.logger.info(f"Completed! Generated {len(self.results['T_F'])} trajectory segments")
+            self.results["final_regressor_shape"] = (W_stack.shape if W_stack is not None else None)
             return self.results
 
         except Exception as e:
             self.logger.error(f"Error in solve: {e}")
             raise
 
-    def objective_function(
-        self, X, opt_cb, tps, vel_wps, acc_wps, wp_init, W_stack=None
-    ):
+    def objective_function(self, X, opt_cb, tps, vel_wps, acc_wps, wp_init, W_stack=None):
         """Objective function: condition number of base regressor matrix."""
         try:
             # Reshape and arrange waypoints
             X = np.array(X)
-            wps_X = np.reshape(
-                X,
-                (self.trajectory_config["n_wps"] - 1, len(self.active_joints)),
-            )
+            wps_X = np.reshape(X, (self.trajectory_config["n_wps"] - 1, len(self.active_joints)),)
             wps = np.vstack((wp_init, wps_X))
             # 对于UR臂，wps矩阵维度为[n_joints,n_wps]
             wps = wps.transpose()
@@ -249,40 +234,6 @@ class BaseOptimalTrajectory:
         raise NotImplementedError(
             "Subclasses must implement create_ipopt_problem"
         )
-
-    # def _stack_base_regressors(self, q, v, a, W_stack=None) -> np.ndarray:
-    #     """Build base regressor matrix using active backend.
-
-    #     The CasadiBackend performs column elimination internally, so
-    #     ``idx_e`` may reference columns that don't exist in the
-    #     CasADi-produced regressor.  We filter ``idx_e`` to valid
-    #     indices before applying ``build_regressor_reduced``.
-    #     """
-    #     try:
-    #         W = self._backend.build_regressor(q, v, a, self.identif_config)
-
-    #         # Filter idx_e to columns that exist in W
-    #         valid_idx_e = [i for i in self.idx_e if i < W.shape[1]]
-    #         if valid_idx_e:
-    #             W_e_ = build_regressor_reduced(W, valid_idx_e)
-    #         else:
-    #             W_e_ = W
-
-    #         # Filter idx_b similarly
-    #         valid_idx_b = [i for i in self.idx_b if i < W_e_.shape[1]]
-    #         if valid_idx_b:
-    #             W_b_ = build_baseRegressor(W_e_, valid_idx_b)
-    #         else:
-    #             W_b_ = W_e_
-
-    #         if isinstance(W_stack, np.ndarray):
-    #             W_b_ = np.vstack((W_stack, W_b_))
-
-    #         return W_b_
-    #     except Exception as e:
-    #         self.logger.error(f"Error building base regressor: {e}")
-    #         raise
-
 	
     def _stack_base_regressors(self, q, v, a, W_stack=None) -> np.ndarray:
         """Build base regressor matrix."""
@@ -298,128 +249,75 @@ class BaseOptimalTrajectory:
         except Exception as e:
             self.logger.error(f"Error building base regressor: {e}")
             raise
-	
 
-
-    # def _generate_feasible_initial_guess(self, wp_init, vel_wp_init, acc_wp_init):
-    #     """Generate a feasible initial guess for optimization.
-
-    #     Strategy (tried in order):
-    #     1. **Uniform**: place all waypoints at the same position as
-    #        ``wp_init`` — produces a static trajectory with zero velocity
-    #        and acceleration that trivially satisfies constraints.
-    #     2. **Random search**: if the uniform guess isn't feasible (e.g.,
-    #        zero position is outside joint limits), fall back to random
-    #        sampling.
-    #     """
-    #     self.logger.info("Generating feasible initial trajectory...")
-
-    #     count = 0
-    #     is_constr_violated = True
-    #     max_attempts = self.trajectory_config.get("max_attempts", 500)
-
-    #     # ── Strategy 1: uniform (static) guess ──────────────────
-    #     # Replicate wp_init across all waypoints — near-static with
-    #     # a small perturbation (±0.05 rad) so the regressor isn't
-    #     # degenerate (zero velocity → singular condition number).
-    #     n_wps = self.trajectory_config["n_wps"]
-    #     n_act = len(self.WP.act_idxq)
-    #     # 将wp_init(初始位置路点)在时间维度上复制n_wps次，形成一个(n_act, n_wps)形状的矩阵
-    #     wps_uniform = np.tile(wp_init, (n_wps, 1)).T  
-    #     # 为除了第一个路点之外的所有路点添加一个小的随机扰动（ ±0.05 rad ）。
-    #     # 这样做的目的是避免生成完全静止的轨迹（零速度），因为零速度可能导致回
-    #     # 归矩阵退化（条件数趋于无穷大），从而使参数辨识变得困难。
-    #     # 前面将wp_init向内压缩了80%，这个地方轨迹的波动不能超过行程一半的20%
-    #     threshold = np.zeros(len(self.WP.act_idxq))
-    #     for idx in range(len(self.WP.act_idxq)):
-    #         threshold[idx] = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.2
-    #         threshold[idx] = threshold[idx] if threshold[idx] < 0.05 else 0.05        
-        
-    #     rng = np.random.default_rng(1)
-    #     wps_uniform[:, 1:] += rng.uniform(-threshold, threshold, (n_act, n_wps - 1))
-    #     # 速度和加速度路点初始化为零，表示这是一个接近静态的轨迹
-    #     vel_uniform = np.zeros((n_act, n_wps))         
-    #     acc_uniform = np.zeros_like(vel_uniform)
-    #     # 生成时间点序列，每个路点之间的时间间隔由 self.trajectory_config["t_s"] 决定
-    #     tps = np.matrix(
-    #         [self.trajectory_config["t_s"] * i_wp
-    #          for i_wp in range(self.trajectory_config["n_wps"])]
-    #     ).transpose()
-
-    #     # 关节位置wps_uniform，速度vel_uniform，加速度acc_uniform，以及tps_r时间序列，
-    #     # 针对每个active_joint构造三次样条曲线。以指定频率“freq”在三次样条曲线上采样，
-    #     # 得到采样点上的关节位置/速度(位置一阶导)/加速度(位置二阶导)序列。
-    #     t_i, p_i, v_i, a_i = self.WP.get_full_config(
-    #         self.trajectory_config["freq"], tps, wps_uniform, vel_uniform, acc_uniform,
-    #     )
-    #     tau_i = calc_torque(p_i.shape[0], self.robot, p_i, v_i, a_i)
-    #     tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
-        
-    #     # TODO: 后续添加路径的自碰撞检测 check_self_collision
-    #     is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
-
-    #     if not is_constr_violated:
-    #         self.logger.info("Uniform initial guess is feasible (static trajectory)")
-    #         return wps_uniform, vel_uniform, acc_uniform, tps, t_i, p_i, v_i, a_i
-
-    #     # ── Strategy 2: random search ──────────────────────────
-    #     self.logger.info("Uniform guess infeasible; trying random search "
-    #         "(max %d attempts)...", max_attempts,)
-        
-    #     while is_constr_violated and count < max_attempts:
-    #         count += 1
-    #         self.logger.info("Attempt %d/%d to find feasible initial trajectory...", count, max_attempts,)
-
-    #         try:
-    #             # Generate random waypoints
-    #             wps, vel_wps, acc_wps = self.WP.gen_rand_wp(wp_init, vel_wp_init, acc_wp_init)
-
-    #             # Generate time points
-    #             tps = np.matrix(
-    #                 [
-    #                     self.trajectory_config["t_s"] * i_wp
-    #                     for i_wp in range(self.trajectory_config["n_wps"])
-    #                 ]
-    #             ).transpose()
-
-    #             # Get full configuration
-    #             t_i, p_i, v_i, a_i = self.WP.get_full_config(
-    #                 self.trajectory_config["freq"], tps, wps, vel_wps, acc_wps
-    #             )
-
-    #             # Compute torques and check constraints
-    #             tau_i = calc_torque(
-    #                 p_i.shape[0], self.robot, p_i, v_i, a_i
-    #             )
-    #             tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
-    #             is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
-
-    #         except Exception as e:
-    #             self.logger.warning(f"Error in attempt {count}: {e}")
-    #             continue
-
-    #     if count >= self.trajectory_config["max_attempts"]:
-    #         raise RuntimeError("Could not find feasible initial trajectory after max_attempts")
-    #     else:
-    #         self.logger.info(f"Found feasible initial trajectory after {count} attempts")
-
-    #     return wps, vel_wps, acc_wps, tps, t_i, p_i, v_i, a_i
-		
-		
     def _generate_feasible_initial_guess(self, wp_init, vel_wp_init, acc_wp_init):
-        """Generate a feasible initial guess for optimization."""
+        """Generate a feasible initial guess for optimization.
+
+        Strategy (tried in order):
+        1. **Uniform**: place all waypoints at the same position as
+           ``wp_init`` — produces a static trajectory with zero velocity
+           and acceleration that trivially satisfies constraints.
+        2. **Random search**: if the uniform guess isn't feasible (e.g.,
+           zero position is outside joint limits), fall back to random
+           sampling.
+        """
         self.logger.info("Generating feasible initial trajectory...")
 
         count = 0
         is_constr_violated = True
+        max_attempts = self.trajectory_config.get("max_attempts", 500)
 
-        while (
-            is_constr_violated
-            and count < self.trajectory_config["max_attempts"]
-        ):
+        # ── Strategy 1: uniform (static) guess ──────────────────
+        # Replicate wp_init across all waypoints — near-static with
+        # a small perturbation (±0.05 rad) so the regressor isn't
+        # degenerate (zero velocity → singular condition number).
+        n_wps = self.trajectory_config["n_wps"]
+        n_act = len(self.WP.act_idxq)
+        # 将wp_init(初始位置路点)在时间维度上复制n_wps次，形成一个(n_act, n_wps)形状的矩阵
+        wps_uniform = np.tile(wp_init, (n_wps, 1)).T  
+        # 为除了第一个路点之外的所有路点添加一个小的随机扰动（ ±0.05 rad ）。
+        # 这样做的目的是避免生成完全静止的轨迹（零速度），因为零速度可能导致回
+        # 归矩阵退化（条件数趋于无穷大），从而使参数辨识变得困难。
+        # 前面将wp_init向内压缩了80%，这个地方轨迹的波动不能超过行程一半的20%
+        threshold = np.zeros(len(self.WP.act_idxq))
+        for idx in range(len(self.WP.act_idxq)):
+            threshold[idx] = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.2
+            threshold[idx] = threshold[idx] if threshold[idx] < 0.25 else 0.25        
+        
+        rng = np.random.default_rng(1)
+        wps_uniform[:, 1:] += rng.uniform(-threshold, threshold, (n_act, n_wps - 1))
+        # 速度和加速度路点初始化为零，表示这是一个接近静态的轨迹
+        vel_uniform = np.zeros((n_act, n_wps))         
+        acc_uniform = np.zeros_like(vel_uniform)
+        # 生成时间点序列，每个路点之间的时间间隔由 self.trajectory_config["t_s"] 决定
+        tps = np.matrix(
+            [self.trajectory_config["t_s"] * i_wp
+             for i_wp in range(self.trajectory_config["n_wps"])]
+        ).transpose()
+
+        # 关节位置wps_uniform，速度vel_uniform，加速度acc_uniform，以及tps_r时间序列，
+        # 针对每个active_joint构造三次样条曲线。以指定频率“freq”在三次样条曲线上采样，
+        # 得到采样点上的关节位置/速度(位置一阶导)/加速度(位置二阶导)序列。
+        t_i, p_i, v_i, a_i = self.WP.get_full_config(
+            self.trajectory_config["freq"], tps, wps_uniform, vel_uniform, acc_uniform,
+        )
+        tau_i = calc_torque(p_i.shape[0], self.robot, p_i, v_i, a_i)
+        tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
+        
+        # TODO: 后续添加路径的自碰撞检测 check_self_collision
+        is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
+
+        if not is_constr_violated:
+            self.logger.info("Uniform initial guess is feasible (static trajectory)")
+            return wps_uniform, vel_uniform, acc_uniform, tps, t_i, p_i, v_i, a_i
+
+        # ── Strategy 2: random search ──────────────────────────
+        self.logger.info("Uniform guess infeasible; trying random search "
+            "(max %d attempts)...", max_attempts,)
+        
+        while is_constr_violated and count < max_attempts:
             count += 1
-            if count % 100 == 0:
-                self.logger.info(f"Attempt {count} to find feasible initial trajectory...")
+            self.logger.info("Attempt %d/%d to find feasible initial trajectory...", count, max_attempts,)
 
             try:
                 # Generate random waypoints
@@ -434,7 +332,7 @@ class BaseOptimalTrajectory:
                 ).transpose()
 
                 # Get full configuration
-                t_i, p_i, v_i, a_i = self.CB.get_full_config(
+                t_i, p_i, v_i, a_i = self.WP.get_full_config(
                     self.trajectory_config["freq"], tps, wps, vel_wps, acc_wps
                 )
 
@@ -443,22 +341,19 @@ class BaseOptimalTrajectory:
                     p_i.shape[0], self.robot, p_i, v_i, a_i
                 )
                 tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
-                is_constr_violated = self.CB.check_cfg_constraints(p_i, v_i, tau_i)
+                is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
 
             except Exception as e:
                 self.logger.warning(f"Error in attempt {count}: {e}")
                 continue
 
         if count >= self.trajectory_config["max_attempts"]:
-            self.logger.warning(
-                f"Could not find feasible initial trajectory after {self.trajectory_config['max_attempts']} attempts"
-            )
+            raise RuntimeError("Could not find feasible initial trajectory after max_attempts")
         else:
             self.logger.info(f"Found feasible initial trajectory after {count} attempts")
 
         return wps, vel_wps, acc_wps, tps, t_i, p_i, v_i, a_i
 		
-
     def _solve_segment(self, s_rep, wp_init, vel_wp_init, acc_wp_init, W_stack) -> bool:
         """Solve a single trajectory segment."""
         try:
@@ -469,7 +364,7 @@ class BaseOptimalTrajectory:
             # 设定 N 为采样数量
             # t_i [N, 1]
             # p_i v_i a_i [N, len(self.WP.act_idxq)]
-            wps, vel_wps, acc_wps, tps, t_i, p_i, v_i, a_i = self._generate_feasible_initial_guess(
+            wps, vel_wps, acc_wps, tps, _, p_i, _, _ = self._generate_feasible_initial_guess(
                 wp_init, vel_wp_init, acc_wp_init
             )
 
@@ -531,22 +426,61 @@ class BaseOptimalTrajectory:
             return
 
         try:
-            from .results_manager import ResultsManager
+            from figaroh.utils.results_manager import ResultsManager
 
-            # Initialize results manager
+            output_dir = getattr(self, '_latest_saved_results_dir', 'results')
+            pkl_path = None
+            if hasattr(self, '_latest_saved_results') and self._latest_saved_results.get('pkl'):
+                pkl_path = Path(self._latest_saved_results['pkl'])
+            else:
+                pkl_dir = Path(output_dir)
+                if pkl_dir.exists():
+                    pkl_candidates = sorted(
+                        pkl_dir.glob('*.pkl'),
+                        key=lambda p: p.stat().st_mtime,
+                        reverse=True,
+                    )
+                    pkl_path = pkl_candidates[0] if pkl_candidates else None
+
+            if pkl_path is None or not pkl_path.exists():
+                self.logger.error("No saved .pkl file found for plotting")
+                return
+
+            with open(pkl_path, 'rb') as f:
+                loaded_results = pickle.load(f)
+
+            if 'T_F' in loaded_results:
+                trajectories = loaded_results
+            elif 'time_segments' in loaded_results:
+                trajectories = {
+                    'T_F': [np.array(t) for t in loaded_results.get('time_segments', [])],
+                    'P_F': [np.array(p) for p in loaded_results.get('position_segments', [])],
+                    'V_F': [np.array(v) for v in loaded_results.get('velocity_segments', [])],
+                    'A_F': [np.array(a) for a in loaded_results.get('acceleration_segments', [])],
+                }
+            else:
+                self.logger.error(f"Unsupported plot data format in {pkl_path}")
+                return
+
             robot_name = getattr(self, 'robot_name', self.robot.model.name)
             results_manager = ResultsManager('optimal_trajectory', robot_name)
 
-            # Calculate overall condition number
             condition_number = getattr(self, 'final_condition_number', 0.0)
-            if condition_number == 0.0 and hasattr(self, 'results') and 'condition_numbers' in self.results:
-                condition_number = self.results['condition_numbers'][-1] if self.results['condition_numbers'] else 0.0
+            if condition_number == 0.0:
+                if isinstance(loaded_results, dict):
+                    condition_number = loaded_results.get('condition_number', condition_number)
+                    if condition_number == 0.0 and 'condition_number_history' in loaded_results:
+                        history = loaded_results.get('condition_number_history', [])
+                        if history and isinstance(history, list) and history[-1]:
+                            try:
+                                condition_number = float(history[-1][-1])
+                            except Exception:
+                                pass
 
-            # Plot using unified manager
             results_manager.plot_optimal_trajectory_results(
-                trajectories=self.results,
+                trajectories=trajectories,
                 condition_number=condition_number,
-                joint_names=[f"Joint {i+1}" for i in range(len(self.WP.act_Jid))],
+                joint_names=[f"Joint {i+1}" for i in range(len(self.identif_config["act_Jid"]))],
                 title="Optimal Trajectory Generation Results"
             )
 
@@ -606,39 +540,46 @@ class BaseOptimalTrajectory:
             return
 
         try:
-            from .results_manager import ResultsManager
+            from figaroh.utils.results_manager import ResultsManager
 
-            # Initialize results manager
             robot_name = getattr(self, 'robot_name', self.robot.model.name)
             results_manager = ResultsManager('optimal_trajectory', robot_name)
 
-            # Calculate overall condition number
-            condition_number = getattr(self, 'final_condition_number', 0.0)
-            if condition_number == 0.0 and hasattr(self, 'results') and 'condition_numbers' in self.results:
-                condition_number = self.results['condition_numbers'][-1] if self.results['condition_numbers'] else 0.0
+            cond_history_per_segment = []
+            for seg in self.results.get('iteration_data', []):
+                if isinstance(seg, dict):
+                    vals = seg.get('obj_values', [])
+                    row = []
+                    for v in vals:
+                        try:
+                            row.append(float(v))
+                        except Exception:
+                            continue
+                    cond_history_per_segment.append(row)
 
-            # Prepare results dictionary
             results_dict = {
                 'trajectory_segments': len(self.results['T_F']),
-                'condition_number': float(condition_number),
-                'joint_names': [f"Joint {i+1}" for i in range(len(self.WP.act_Jid))],
-                'configuration': self.WP.identif_config,
+                'condition_number': (cond_history_per_segment[-1][-1]
+                                     if cond_history_per_segment and cond_history_per_segment[-1] else 0.0),
+                'joint_names': [f"Joint {i+1}" for i in range(len(self.identif_config["act_Jid"]))],
+                # 'configuration': self.identif_config,  # TODO: 序列化的时候会出错，所以注释掉了，后面看会不会用到
                 'time_segments': [t.tolist() for t in self.results['T_F']],
                 'position_segments': [p.tolist() for p in self.results['P_F']],
                 'velocity_segments': [v.tolist() for v in self.results['V_F']],
-                'acceleration_segments': [a.tolist() for a in self.results['A_F']]
+                'acceleration_segments': [a.tolist() for a in self.results['A_F']],
+                'condition_number_history': cond_history_per_segment
             }
 
-            # Add condition number history if available
-            if 'condition_numbers' in self.results:
-                results_dict['condition_number_history'] = [float(c) for c in self.results['condition_numbers']]
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_prefix = f"{robot_name}_optimal_trajectory_{timestamp}"
 
-            # Save using unified manager
-            saved_files = results_manager.save_results(
-                results_dict,
-                output_dir,
-                save_formats=['yaml', 'npz']
-            )
+            pkl_files = results_manager.save_results(self.results, output_dir, file_prefix=file_prefix, save_formats=['pkl'])
+            yaml_files = results_manager.save_results(results_dict, output_dir, file_prefix=file_prefix, save_formats=['yaml'])
+
+            saved_files = {**pkl_files, **yaml_files}
+            self._latest_saved_results = saved_files
+            self._latest_saved_results_dir = output_dir
 
             self.logger.info(f"Trajectory results saved successfully")
             return saved_files
@@ -722,9 +663,7 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
     def constraints(self, X: np.ndarray) -> np.ndarray:
         """Constraint function for IPOPT."""
         return self.opt_traj.constraint_manager.evaluate_constraints(
-            self.Ns, X, self.opt_cb, self.tps, self.vel_wps, 
-            self.acc_wps, self.wp_init
-        )
+            self.Ns, X, self.tps, self.vel_wps, self.acc_wps, self.wp_init)
     
     def jacobian(self, X: np.ndarray) -> np.ndarray:
         """
@@ -871,7 +810,7 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         wps_X = np.reshape(x_opt, (self.n_wps - 1, self.n_joints))
         wps_opt = np.vstack((self.wp_init, wps_X)).transpose()
 
-        t_f, p_f, v_f, a_f = self.opt_traj.CB.get_full_config(
+        t_f, p_f, v_f, a_f = self.opt_traj.WP.get_full_config(
             self.opt_traj.trajectory_config["freq"],
             self.tps, wps_opt, self.vel_wps, self.acc_wps,
         )
@@ -926,9 +865,9 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             # Create solver with trajectory optimization config
             config = IPOPTConfig.for_trajectory_optimization()
             # Adjust settings for this complex problem
-            config.tolerance = 1e-3
-            config.acceptable_tolerance = 1e-2
-            config.max_iterations = 200
+            config.tolerance = 0.1  # 1e-3
+            config.acceptable_tolerance = 0.5  # 1e-2
+            config.max_iterations = 3 # 200
             config.print_level = 3  # Reduce output
             config.custom_options = {
                 b"mu_strategy": b"adaptive",
