@@ -408,6 +408,10 @@ class ResultsManager:
             # Plot each joint's trajectory
             colors = plt.cm.tab10(np.linspace(0, 1, len(times)))
 
+            # Store bottom-row axes so we can set x-labels without
+            # creating blank overlays (which would hide the bottom-row data).
+            bottom_axes = []
+
             for joint_idx in range(n_joints):
                 # Position
                 ax_pos = fig.add_subplot(gs[joint_idx, 0])
@@ -438,9 +442,13 @@ class ResultsManager:
                 if joint_idx == 0:
                     ax_acc.set_title('Joint Accelerations')
 
-            # Set x-labels for bottom row
-            for col in range(3):
-                fig.add_subplot(gs[-1, col]).set_xlabel('Time (s)')
+                # Remember bottom-row axes for x-label
+                if joint_idx == n_joints - 1:
+                    bottom_axes = [ax_pos, ax_vel, ax_acc]
+
+            # Set x-labels on the existing bottom-row axes
+            for ax in bottom_axes:
+                ax.set_xlabel('Time (s)')
 
             fig.suptitle(f"{self.robot_name.upper()} {title}\nCondition Number: {condition_number:.2e}", 
                         fontsize=16)

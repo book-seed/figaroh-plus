@@ -366,7 +366,7 @@ class BaseOptimalTrajectory:
             )
 
             # Adjust time points for stacking
-            tps = self.trajectory_config["t_s"] * s_rep + tps
+            tps = self.trajectory_config["t_s"] * (self.trajectory_config["n_wps"] - 1) * s_rep + tps
 
             # Create and solve IPOPT problem - This should be implemented by subclasses
             problem = self.create_ipopt_problem(
@@ -416,80 +416,124 @@ class BaseOptimalTrajectory:
 
         return wp_init, W_stack
 
-    def plot_results(self):
-        """Plot optimal trajectory results using unified results manager."""
-        if not self.results['T_F']:
+    def _find_latest_pkl(self, output_dir: str = "results") -> str | None:
+        """Find the latest .pkl trajectory file in *output_dir* by timestamp.
+
+        The filename pattern is::
+
+            {robot_name}_optimal_trajectory_{YYYYMMDD_HHMMSS}.pkl
+
+        Returns the path with the greatest (i.e. most recent) timestamp, or
+        *None* when no matching file exists.
+        """
+        import re
+
+        robot_name = getattr(self, 'robot_name', self.robot.model.name)
+        results_dir = Path(output_dir)
+        if not results_dir.is_dir():
+            self.logger.warning("Results directory '%s' does not exist", output_dir)
+            return None
+
+        pattern = re.compile(
+            rf"{re.escape(robot_name)}_optimal_trajectory_(\d{{8}}_\d{{6}})\.pkl$"
+        )
+
+        latest_path = None
+        latest_ts = ""
+        for p in results_dir.glob(f"{robot_name}_optimal_trajectory_*.pkl"):
+            m = pattern.match(p.name)
+            if m and m.group(1) > latest_ts:
+                latest_ts = m.group(1)
+                latest_path = p
+
+        if latest_path is None:
+            self.logger.warning(
+                "No .pkl matching '%s_optimal_trajectory_*.pkl' in '%s'",
+                robot_name, output_dir,
+            )
+        return latest_path
+
+    @staticmethod
+    def _load_results_from_pkl(pkl_path: str) -> dict:
+        """Load a saved .pkl and convert it to the internal results format.
+
+        The on-disk representation uses serialisation-friendly keys
+        (``time_segments``, ``position_segments``, ...).  This helper maps
+        them back to the keys expected by the plotting / analysis routines
+        (``T_F``, ``P_F``, ``V_F``, ``A_F``) and converts lists back to
+        numpy arrays.
+        """
+        with open(pkl_path, 'rb') as f:
+            saved = pickle.load(f)
+
+        converted = {
+            'T_F': [np.array(t) for t in saved.get('time_segments', [])],
+            'P_F': [np.array(p) for p in saved.get('position_segments', [])],
+            'V_F': [np.array(v) for v in saved.get('velocity_segments', [])],
+            'A_F': [np.array(a) for a in saved.get('acceleration_segments', [])],
+            'iteration_data': [],
+            'final_regressor_shape': None,
+        }
+
+        # Carry over metadata fields that are already serialisable
+        for key in ('condition_number', 'joint_names', 'condition_number_history',
+                     'trajectory_segments'):
+            if key in saved:
+                converted[key] = saved[key]
+
+        return converted
+
+    def plot_results(self, output_dir: str = "results", pkl_path: str | None = None):
+        """Plot optimal trajectory results.
+
+        Loads trajectory data from the latest ``.pkl`` file found in
+        *output_dir* (or from *pkl_path* when given explicitly).  Falls
+        back to the in-memory ``self.results`` only when no .pkl file is
+        available.
+        """
+        # ── Resolve data source ───────────────────────────────────
+        if pkl_path is not None:
+            resolved_path = pkl_path
+        else:
+            resolved_path = self._find_latest_pkl(output_dir)
+
+        if resolved_path is not None:
+            self.logger.info("Loading trajectory data from: %s", resolved_path)
+            trajectories = self._load_results_from_pkl(resolved_path)
+            self.results = trajectories  # keep memory copy consistent
+        else:
+            self.logger.warning(
+                "No .pkl found in '%s' — falling back to in-memory self.results",
+                output_dir,
+            )
+            trajectories = self.results
+
+        if not trajectories.get('T_F'):
             self.logger.warning("No trajectory data to plot")
             return
 
+        # ── Plot ──────────────────────────────────────────────────
         try:
             from figaroh.utils.results_manager import ResultsManager
 
-            # Initialize results manager
             robot_name = getattr(self, 'robot_name', self.robot.model.name)
             results_manager = ResultsManager('optimal_trajectory', robot_name)
 
-            # Calculate overall condition number
-            condition_number = getattr(self, 'final_condition_number', 0.0)
-            if condition_number == 0.0 and hasattr(self, 'results') and 'condition_numbers' in self.results:
-                condition_number = self.results['condition_numbers'][-1] if self.results['condition_numbers'] else 0.0
+            condition_number = trajectories.get('condition_number', 0.0)
 
-            # Plot using unified manager
             results_manager.plot_optimal_trajectory_results(
-                trajectories=self.results,
+                trajectories=trajectories,
                 condition_number=condition_number,
-                joint_names=[f"Joint {i+1}" for i in range(len(self.CB.act_Jid))],
-                title="Optimal Trajectory Generation Results"
+                joint_names=trajectories.get(
+                    'joint_names',
+                    [f"Joint {i+1}" for i in range(len(self.identif_config["act_Jid"]))],
+                ),
+                title="Optimal Trajectory Generation Results",
             )
 
-        except ImportError:
-            # Fallback to existing plotting
-            try:
-                # Create subplots
-                n_joints = len(self.WP.act_Jid)
-                fig, axes = plt.subplots(n_joints, 3, sharex=True, figsize=(15, 2*n_joints))
-                if n_joints == 1:
-                    axes = axes.reshape(1, -1)
-
-                fig.suptitle('Optimal Trajectory Results', fontsize=16)
-
-                # Plot each segment
-                colors = plt.cm.tab10(np.linspace(0, 1, len(self.results['T_F'])))
-
-                for seg_idx, (T, P, V, A) in enumerate(zip(
-                    self.results['T_F'], self.results['P_F'], 
-                    self.results['V_F'], self.results['A_F']
-                )):
-                    color = colors[seg_idx]
-                    label = f'Segment {seg_idx + 1}'
-
-                    for joint_idx in range(n_joints):
-                        axes[joint_idx, 0].plot(T, P[:, joint_idx], color=color, label=label)
-                        axes[joint_idx, 1].plot(T, V[:, joint_idx], color=color, label=label)
-                        axes[joint_idx, 2].plot(T, A[:, joint_idx], color=color, label=label)
-
-                # Set labels and formatting
-                for joint_idx in range(n_joints):
-                    axes[joint_idx, 0].set_ylabel(f'Joint {joint_idx+1}\nPosition (rad)')
-                    axes[joint_idx, 1].set_ylabel(f'Joint {joint_idx+1}\nVelocity (rad/s)')
-                    axes[joint_idx, 2].set_ylabel(f'Joint {joint_idx+1}\nAcceleration (rad/s²)')
-
-                    if joint_idx == 0:
-                        for col in range(3):
-                            axes[joint_idx, col].legend()
-
-                    for col in range(3):
-                        axes[joint_idx, col].grid(True, alpha=0.3)
-
-                axes[-1, 0].set_xlabel('Time (s)')
-                axes[-1, 1].set_xlabel('Time (s)')
-                axes[-1, 2].set_xlabel('Time (s)')
-
-                plt.tight_layout()
-                plt.show()
-
-            except Exception as e:
-                self.logger.error(f"Error plotting results: {e}")
+        except Exception as e:
+            self.logger.error(f"Error plotting results: {e}")
+            raise
 
     def save_results(self, output_dir="results"):
         """Save optimal trajectory results using unified results manager."""
@@ -792,13 +836,11 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             # Create solver with trajectory optimization config
             config = IPOPTConfig.for_trajectory_optimization()
             # Adjust settings for this complex problem
-            config.tolerance = 0.1  # 1e-3
-            config.acceptable_tolerance = 0.5  # 1e-2
-            config.max_iterations = 3 # 200
+            config.tolerance = 1e-3
+            config.acceptable_tolerance = 1e-2
+            config.max_iterations = 200
             config.print_level = 3  # Reduce output
-            config.custom_options = {
-                b"mu_strategy": b"adaptive",
-            }
+            config.custom_options = {b"mu_strategy": b"adaptive"}
             solver = RobotIPOPTSolver(self, config)
 
             # Solve the problem
