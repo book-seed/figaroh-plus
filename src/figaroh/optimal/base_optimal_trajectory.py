@@ -72,8 +72,7 @@ class BaseOptimalTrajectory:
             robot: RobotWrapper instance.
             active_joints: List of active joint names.
             config_file: Path to configuration YAML file.
-            backend: Backend specifier — "numerical" (default), "casadi",
-                or a Backend instance.
+            backend: Backend specifier — "numerical" (default), "casadi", or a Backend instance.
         """
         self.robot = robot
         self.model = self.robot.model
@@ -82,9 +81,7 @@ class BaseOptimalTrajectory:
         self.logger = logging.getLogger(__name__)
 
         # Load configuration
-        self.trajectory_config, self.identif_config = load_param(
-            self.robot, config_file
-        )
+        self.trajectory_config, self.identif_config = load_param(self.robot, config_file)
         
         self.active_joints = self.identif_config["active_joints"]
 
