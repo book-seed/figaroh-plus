@@ -153,7 +153,7 @@ class BaseOptimalTrajectory:
             rng = np.random.default_rng(100)
             for idx in range(len(self.WP.act_idxq)):
                 center = (self.WP.lower_q[idx] + self.WP.upper_q[idx]) / 2
-                half_range = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.8
+                half_range = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 1.0
                 q_pool = np.asarray(self.WP.pool_q)[:, idx]
                 valid_q = q_pool[(q_pool >= (center - half_range)) & (q_pool <= (center + half_range))]
                 if valid_q.size == 0:
@@ -264,49 +264,49 @@ class BaseOptimalTrajectory:
         is_constr_violated = True
         max_attempts = self.trajectory_config.get("max_attempts", 500)
 
-        # ── Strategy 1: uniform (static) guess ──────────────────
-        # Replicate wp_init across all waypoints — near-static with
-        # a small perturbation (±0.05 rad) so the regressor isn't
-        # degenerate (zero velocity → singular condition number).
-        n_wps = self.trajectory_config["n_wps"]
-        n_act = len(self.WP.act_idxq)
-        # 将wp_init(初始位置路点)在时间维度上复制n_wps次，形成一个(n_act, n_wps)形状的矩阵
-        wps_uniform = np.tile(wp_init, (n_wps, 1)).T  
-        # 为除了第一个路点之外的所有路点添加一个小的随机扰动（ ±0.05 rad ）。
-        # 这样做的目的是避免生成完全静止的轨迹（零速度），因为零速度可能导致回
-        # 归矩阵退化（条件数趋于无穷大），从而使参数辨识变得困难。
-        # 前面将wp_init向内压缩了80%，这个地方轨迹的波动不能超过行程一半的20%
-        threshold = np.zeros(len(self.WP.act_idxq))
-        for idx in range(len(self.WP.act_idxq)):
-            threshold[idx] = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.2
-            threshold[idx] = threshold[idx] if threshold[idx] < 0.25 else 0.25        
+        # # ── Strategy 1: uniform (static) guess ──────────────────
+        # # Replicate wp_init across all waypoints — near-static with
+        # # a small perturbation (±0.05 rad) so the regressor isn't
+        # # degenerate (zero velocity → singular condition number).
+        # n_wps = self.trajectory_config["n_wps"]
+        # n_act = len(self.WP.act_idxq)
+        # # 将wp_init(初始位置路点)在时间维度上复制n_wps次，形成一个(n_act, n_wps)形状的矩阵
+        # wps_uniform = np.tile(wp_init, (n_wps, 1)).T  
+        # # 为除了第一个路点之外的所有路点添加一个小的随机扰动（ ±0.05 rad ）。
+        # # 这样做的目的是避免生成完全静止的轨迹（零速度），因为零速度可能导致回
+        # # 归矩阵退化（条件数趋于无穷大），从而使参数辨识变得困难。
+        # # 前面将wp_init向内压缩了80%，这个地方轨迹的波动不能超过行程一半的20%
+        # threshold = np.zeros(len(self.WP.act_idxq))
+        # for idx in range(len(self.WP.act_idxq)):
+        #     threshold[idx] = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.2
+        #     threshold[idx] = threshold[idx] if threshold[idx] < 0.25 else 0.25        
         
-        rng = np.random.default_rng(1)
-        wps_uniform[:, 1:] += rng.uniform(-threshold, threshold, (n_act, n_wps - 1))
-        # 速度和加速度路点初始化为零，表示这是一个接近静态的轨迹
-        vel_uniform = np.zeros((n_act, n_wps))         
-        acc_uniform = np.zeros_like(vel_uniform)
-        # 生成时间点序列，每个路点之间的时间间隔由 self.trajectory_config["t_s"] 决定
-        tps = np.matrix(
-            [self.trajectory_config["t_s"] * i_wp
-             for i_wp in range(self.trajectory_config["n_wps"])]
-        ).transpose()
+        # rng = np.random.default_rng(1)
+        # wps_uniform[:, 1:] += rng.uniform(-threshold, threshold, (n_act, n_wps - 1))
+        # # 速度和加速度路点初始化为零，表示这是一个接近静态的轨迹
+        # vel_uniform = np.zeros((n_act, n_wps))         
+        # acc_uniform = np.zeros_like(vel_uniform)
+        # # 生成时间点序列，每个路点之间的时间间隔由 self.trajectory_config["t_s"] 决定
+        # tps = np.matrix(
+        #     [self.trajectory_config["t_s"] * i_wp
+        #      for i_wp in range(self.trajectory_config["n_wps"])]
+        # ).transpose()
 
-        # 关节位置wps_uniform，速度vel_uniform，加速度acc_uniform，以及tps_r时间序列，
-        # 针对每个active_joint构造三次样条曲线。以指定频率“freq”在三次样条曲线上采样，
-        # 得到采样点上的关节位置/速度(位置一阶导)/加速度(位置二阶导)序列。
-        t_i, p_i, v_i, a_i = self.WP.get_full_config(
-            self.trajectory_config["freq"], tps, wps_uniform, vel_uniform, acc_uniform,
-        )
-        tau_i = calc_torque(p_i.shape[0], self.robot, p_i, v_i, a_i)
-        tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
+        # # 关节位置wps_uniform，速度vel_uniform，加速度acc_uniform，以及tps_r时间序列，
+        # # 针对每个active_joint构造三次样条曲线。以指定频率“freq”在三次样条曲线上采样，
+        # # 得到采样点上的关节位置/速度(位置一阶导)/加速度(位置二阶导)序列。
+        # t_i, p_i, v_i, a_i = self.WP.get_full_config(
+        #     self.trajectory_config["freq"], tps, wps_uniform, vel_uniform, acc_uniform,
+        # )
+        # tau_i = calc_torque(p_i.shape[0], self.robot, p_i, v_i, a_i)
+        # tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
         
         # TODO: 后续添加路径的自碰撞检测 check_self_collision
-        is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
+        # is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
 
-        if not is_constr_violated:
-            self.logger.info("Uniform initial guess is feasible (static trajectory)")
-            return wps_uniform, vel_uniform, acc_uniform, tps, t_i, p_i, v_i, a_i
+        # if not is_constr_violated:
+        #     self.logger.info("Uniform initial guess is feasible (static trajectory)")
+        #     return wps_uniform, vel_uniform, acc_uniform, tps, t_i, p_i, v_i, a_i
 
         # ── Strategy 2: random search ──────────────────────────
         self.logger.info("Uniform guess infeasible; trying random search "
@@ -344,10 +344,10 @@ class BaseOptimalTrajectory:
                 self.logger.warning(f"Error in attempt {count}: {e}")
                 continue
 
-        if count >= self.trajectory_config["max_attempts"]:
-            raise RuntimeError("Could not find feasible initial trajectory after max_attempts")
-        else:
-            self.logger.info(f"Found feasible initial trajectory after {count} attempts")
+        # if count >= self.trajectory_config["max_attempts"]:
+        #     raise RuntimeError("Could not find feasible initial trajectory after max_attempts")
+        # else:
+        #     self.logger.info(f"Found feasible initial trajectory after {count} attempts")
 
         return wps, vel_wps, acc_wps, tps, t_i, p_i, v_i, a_i
 		
