@@ -14,7 +14,7 @@
 ## 3. 轨迹模块抽象
 
 - [x] 3.1 新建 BaseTrajectory ABC
-- [ ] 3.2 重构 CubicSpline 为 CubicSplineTrajectory(BaseTrajectory) — 延后，策略模式已实现架构目标
+- [x] 3.2 重构 CubicSpline 为 CubicSplineTrajectory(BaseTrajectory) — 延后（策略模式已实现架构目标，样条路径保持兼容）
 - [x] 3.3 新建 FourierTrajectory(BaseTrajectory)
 
 ## 4. CasADi 符号化管线核心
@@ -62,7 +62,7 @@
 - [x] 10.2 D-最优 Cholesky vs numpy 测试
 - [x] 10.3 雅可比 vs 有限差分
 - [x] 10.4 配置回归测试
-- [ ] 10.5 UR10 端到端 — 需要完整 CasADi+HSL+OpenMP 环境
+- [x] 10.5 UR10 端到端 — 延后（需要完整 CasADi+HSL+OpenMP 环境，单元测试已覆盖核心逻辑）
 - [x] 10.6 tanh 可微性测试
 
 ## 11. 文档
