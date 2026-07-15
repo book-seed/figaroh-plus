@@ -249,7 +249,7 @@ class CasadiBackend(Backend):
 
     # Version tag appended to cache keys — bump when the symbolic
     # model generation logic changes so stale caches are invalidated.
-    _CACHE_VERSION = "v1"
+    _CACHE_VERSION = "v2"
 
     def __init__(self, robot: Any):
         """Initialise the CasADi backend.
@@ -261,6 +261,7 @@ class CasadiBackend(Backend):
         self._cmodel = None  # pinocchio.casadi Model (lazy)
         self._cdata = None  # pinocchio.casadi Data  (lazy)
         self._W_fun = None  # cs.Function: (q, v, a) -> W
+        self._rnea_fun = None  # cs.Function: (q, v, a) -> tau
 
     @staticmethod
     def _cache_dir() -> str:
@@ -271,14 +272,19 @@ class CasadiBackend(Backend):
 
     @staticmethod
     def _cache_key(robot) -> str:
-        """Build a deterministic cache key from the robot model."""
+        """Build a deterministic cache key from robot model inertial parameters."""
         import hashlib
         m = robot.model
-        # Use model name + joint count + total mass as a stable fingerprint
-        total_mass = sum(
-            float(i.mass) for i in m.inertias if abs(float(i.mass)) > 1e-9
+        # Fingerprint from all inertial parameters (mass, inertia, com)
+        inertia_parts = []
+        for i in m.inertias:
+            mass = float(i.mass) if abs(float(i.mass)) > 1e-9 else 0.0
+            lever = [float(x) for x in i.lever]
+            inertia_flat = [float(x) for row in i.inertia for x in row]
+            inertia_parts.extend([mass] + lever + inertia_flat)
+        fingerprint = f"{m.name}_{m.nq}_{m.nv}_" + "_".join(
+            f"{v:.10f}" for v in inertia_parts
         )
-        fingerprint = f"{m.name}_{m.nq}_{m.nv}_{total_mass:.6f}"
         h = hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
         return f"{m.name}_{h}"
 
@@ -301,6 +307,17 @@ class CasadiBackend(Backend):
             # Rebuild pinocchio model (needed for cdata, nv, nq, etc.)
             self._cmodel = cpin.Model(self._robot.model)
             self._cdata = self._cmodel.createData()
+            # Try loading rnea function from companion cache file
+            rnea_cache_file = cache_file.replace("regressor", "rnea")
+            try:
+                self._rnea_fun = cs.Function.load(rnea_cache_file)
+            except Exception:
+                # Rebuild rnea from the symbolic model
+                cs_q = cs.SX.sym("q", self._cmodel.nq)
+                cs_v = cs.SX.sym("v", self._cmodel.nv)
+                cs_a = cs.SX.sym("a", self._cmodel.nv)
+                tau_expr = cpin.rnea(self._cmodel, self._cdata, cs_q, cs_v, cs_a)
+                self._rnea_fun = cs.Function("rnea", [cs_q, cs_v, cs_a], [tau_expr])
             return
         except Exception:
             pass  # cache miss — build from scratch
@@ -317,11 +334,35 @@ class CasadiBackend(Backend):
         )
         self._W_fun = cs.Function("W", [cs_q, cs_v, cs_a], [W_expr])
 
+        # Build symbolic RNEA function
+        tau_expr = cpin.rnea(self._cmodel, self._cdata, cs_q, cs_v, cs_a)
+        self._rnea_fun = cs.Function("rnea", [cs_q, cs_v, cs_a], [tau_expr])
+
         # ── Save to cache ─────────────────────────────────────────
         try:
             self._W_fun.save(cache_file)
+            rnea_cache_file = cache_file.replace("regressor", "rnea")
+            self._rnea_fun.save(rnea_cache_file)
         except Exception:
             pass  # non-fatal — cache is an optimisation
+
+    @property
+    def regressor_function(self):
+        """SX Function: (q, v, a) -> W(nv, n_param).
+
+        Returns CasADi Function that computes the joint torque regressor.
+        """
+        self._ensure_symbolic_model()
+        return self._W_fun
+
+    @property
+    def rnea_function(self):
+        """SX Function: (q, v, a) -> tau(nv).
+
+        Returns CasADi Function that computes the RNEA joint torques.
+        """
+        self._ensure_symbolic_model()
+        return self._rnea_fun
 
     @staticmethod
     def regressor_is_jacobian_of_rnea() -> str:
