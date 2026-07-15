@@ -136,8 +136,6 @@ where `fv` and `fs` are nominal friction coefficients from `params_std`, and `α
 - **AND** velocity constraints `v_lower ≤ v(t) ≤ v_upper` SHALL be constructed as MX inequality expressions
 - **AND** torque constraints `τ_lower ≤ RNEA(q,v,a) + friction ≤ τ_upper` SHALL be computed within the CasADi MX graph
 
-## MODIFIED Requirements
-
 ### Requirement: CasADi single source of truth
 
 The system SHALL expose pre-built symbolic dynamics functions via `CasadiBackend` property interfaces (`regressor_function` and `rnea_function`), providing a single source of truth for both trajectory optimization and parameter identification. External code SHALL NOT directly access private attributes of `CasadiBackend`.
