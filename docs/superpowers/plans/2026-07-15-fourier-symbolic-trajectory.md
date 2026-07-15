@@ -2,6 +2,7 @@
 change: symbolic-fourier-trajectory
 design-doc: docs/superpowers/specs/2026-07-15-fourier-symbolic-trajectory-design.md
 base-ref: ad5ce2e9aad96aea6e625ed523ae2fb3761dcbac
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 # 全符号化傅里叶激励轨迹优化 — 实施计划
@@ -23,6 +24,7 @@ base-ref: ad5ce2e9aad96aea6e625ed523ae2fb3761dcbac
 - TDD：每个 task 先写测试再写实现代码
 - `.comet.yaml` 中的 `phase: build`，对应 `workflow: full`
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ## File Structure
@@ -46,6 +48,7 @@ base-ref: ad5ce2e9aad96aea6e625ed523ae2fb3761dcbac
 | `tests/unit/test_strategies.py` | **创建** | 策略模式单元测试 |
 | `scripts/check_env.py` | **创建** | 环境验证脚本 |
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 1: 环境依赖验证脚本
@@ -197,6 +200,7 @@ git add scripts/check_env.py
 git commit -m "feat(env): add environment verification script for CasADi/IPOPT/HSL"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 2: 配置解析扩展
@@ -416,6 +420,7 @@ git add src/figaroh/optimal/config.py tests/unit/test_config_fourier.py
 git commit -m "feat(config): add trajectory_type and fourier_config parsing"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 3: 轨迹模块抽象 — BaseTrajectory
@@ -615,6 +620,7 @@ git add src/figaroh/utils/base_trajectory.py tests/unit/test_base_trajectory.py
 git commit -m "feat(utils): add BaseTrajectory ABC for trajectory generation"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 4: FourierTrajectory 实现
@@ -1021,6 +1027,7 @@ git add src/figaroh/utils/fourier_trajectory.py tests/unit/test_fourier_trajecto
 git commit -m "feat(utils): add FourierTrajectory with numpy eval and CasADi SX expressions"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 5: 策略模式架构 — 策略包 + ABC + 工厂 + SplineStrategy 迁移
@@ -1486,6 +1493,7 @@ git add src/figaroh/optimal/strategies/ tests/unit/test_strategies.py
 git commit -m "feat(optimal): add strategy pattern with SplineOptimizationStrategy migration"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 6: CasadiBackend 属性扩展（regressor_function / rnea_function）
@@ -1658,6 +1666,7 @@ git add src/figaroh/backend/casadi.py tests/unit/test_backend.py
 git commit -m "feat(backend): add regressor_function and rnea_function properties to CasadiBackend"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 7: FourierOptimizationStrategy 符号管线核心
@@ -2224,6 +2233,7 @@ git add src/figaroh/optimal/strategies/fourier_strategy.py tests/unit/test_fouri
 git commit -m "feat(optimal): implement FourierOptimizationStrategy with full CasADi symbolic NLP"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 8: BaseOptimalTrajectory 策略模式集成
@@ -2452,6 +2462,7 @@ git add src/figaroh/optimal/base_optimal_trajectory.py tests/unit/test_backend.p
 git commit -m "feat(optimal): integrate strategy pattern into BaseOptimalTrajectory"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 9: 约束管理适配 + Backend 清理
@@ -2552,6 +2563,7 @@ git add src/figaroh/optimal/contraints.py src/figaroh/backend/casadi.py
 git commit -m "refactor: add symbolic constraint builder and clean up old Callback helpers"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 10: 测试套件
@@ -2732,6 +2744,7 @@ git add tests/unit/test_fourier_strategy.py tests/unit/test_fourier_trajectory.p
 git commit -m "test: add D-optimal, friction model, and symbolic Jacobian tests"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ### Task 11: 文档
@@ -2833,6 +2846,7 @@ git add docs/fourier_trajectory.md README.md
 git commit -m "docs: add Fourier trajectory configuration and environment documentation"
 ```
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
 ---
 
 ## 测试策略映射

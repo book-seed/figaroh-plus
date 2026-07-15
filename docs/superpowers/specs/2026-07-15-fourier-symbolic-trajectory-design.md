@@ -2,6 +2,8 @@
 comet_change: symbolic-fourier-trajectory
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-15-symbolic-fourier-trajectory
+status: final
 ---
 
 # 全符号化傅里叶激励轨迹优化 — 技术设计
@@ -299,6 +301,8 @@ cond_val = float(np.linalg.cond(W_b))
 - 配置解析回归测试
 - 环境验证脚本全绿
 
+archived-with: 2026-07-15-symbolic-fourier-trajectory
+status: final
 ---
 
 ## 12. Documentation

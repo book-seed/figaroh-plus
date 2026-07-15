@@ -17,6 +17,6 @@ verification_report: docs/superpowers/reports/2026-07-15-symbolic-fourier-trajec
 branch_status: handled
 created_at: 2026-07-15
 verified_at: 2026-07-15
-archived: false
+archived: true
 handoff_context: openspec/changes/symbolic-fourier-trajectory/.comet/handoff/design-context.json
 handoff_hash: 88db0d1083102a714ad5590f1eb2533b4c5914c51d22d177e8ced95b35498cca
