@@ -298,3 +298,12 @@ cond_val = float(np.linalg.cond(W_b))
 - `tanh(α·v)` 可微性
 - 配置解析回归测试
 - 环境验证脚本全绿
+
+---
+
+## 12. Documentation
+
+Complete user-facing documentation has been created at:
+
+- [`docs/fourier_trajectory.md`](../../fourier_trajectory.md) — YAML config reference, Python API, architecture overview, environment requirements, comparison with spline, and troubleshooting
+- [`README.md`](../../../README.md) — Fourier trajectory section with quick-start config and environment requirements table
