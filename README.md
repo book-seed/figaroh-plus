@@ -109,6 +109,30 @@ traj = BaseOptimalTrajectory(robot, active_joints, "config.yaml",
                               backend="casadi")
 ```
 
+### Fourier Excitation Trajectory
+
+The Fourier trajectory type provides D-optimal excitation trajectory optimization using a fully symbolic CasADi NLP pipeline. It requires the CasADi backend.
+
+```yaml
+# In unified config
+trajectory:
+  type: "fourier"          # "spline" (default) or "fourier"
+  fourier:
+    n_harmonics: 5
+    n_samples: 200
+    reg_lambda: 1.0e-6
+```
+
+Environment requirements:
+
+| Component | Version | Channel | Purpose |
+|-----------|---------|---------|---------|
+| **CasADi** | >= 3.7.2 | conda-forge | Symbolic computation and NLP solver |
+| **pinocchio.casadi** | >= 4.0 | conda-forge | Symbolic robot dynamics |
+| **OpenMP** | (compiler) | — | Parallel sampling evaluation |
+
+See [docs/fourier_trajectory.md](docs/fourier_trajectory.md) for full documentation.
+
 ---
 
 ## Package Structure
