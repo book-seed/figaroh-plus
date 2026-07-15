@@ -44,6 +44,54 @@ class TrajectoryConstraintManager:
             ub.extend(self.CB.upper_q)
         return lb, ub
 
+    def build_symbolic_constraints(self, Q_sym, V_sym, A_sym, t_sym, cmodel):
+        """Build CasADi SX symbolic constraint expressions.
+
+        This method creates symbolic constraint expressions that can be
+        embedded in a CasADi NLP graph for analytical differentiation.
+
+        Args:
+            Q_sym: Position symbol, shape (N, n_act) CasADi SX/MX.
+            V_sym: Velocity symbol, shape (N, n_act) CasADi SX/MX.
+            A_sym: Acceleration symbol, shape (N, n_act) CasADi SX/MX.
+            t_sym: Time symbol (scalar CasADi SX/MX).
+            cmodel: pinocchio.casadi Model instance.
+
+        Returns:
+            Tuple (cons_expr, lb, ub) where cons_expr is a CasADi SX/MX
+            expression and lb/ub are numpy arrays of lower/upper bounds.
+        """
+        import casadi as cs
+
+        N = Q_sym.shape[0]
+        n_act = Q_sym.shape[1]
+
+        constraints = []
+
+        # Position constraints at all samples
+        for i in range(N):
+            for j in range(n_act):
+                constraints.append(Q_sym[i, j])
+
+        # Velocity constraints at all samples
+        for i in range(N):
+            for j in range(n_act):
+                constraints.append(V_sym[i, j])
+
+        cons_expr = cs.vertcat(*constraints)
+
+        # Build bounds matching the constraint order
+        cl = []
+        cu = []
+        for _ in range(N):
+            cl.extend(self.CB.lower_q)
+            cu.extend(self.CB.upper_q)
+        for _ in range(N):
+            cl.extend(self.CB.lower_dq)
+            cu.extend(self.CB.upper_dq)
+
+        return cons_expr, np.array(cl, dtype=float), np.array(cu, dtype=float)
+
     def get_constraint_bounds(self, Ns: int) -> Tuple[List, List]:
         """Get constraint bounds for optimization."""
         cl, cu = [], []
