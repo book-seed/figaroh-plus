@@ -45,7 +45,7 @@ class RegressorBuilder:
         V = self._ensure_2d(v, self.nv, "v") 
         A = self._ensure_2d(a, self.nv, "a")
 
-        N = Q.shape[0]
+        N = Q.shape[0]  # 数据点数量
         if V.shape[0] != N or A.shape[0] != N:
             raise ValueError(f"Inconsistent sample counts: q={N}, v={V.shape[0]}, a={A.shape[0]}")
 
@@ -70,7 +70,7 @@ class RegressorBuilder:
         - 避免数值问题 : 某些动力学计算可能对零质量的物体敏感，提前过滤可以避免潜在的数值不稳定。
         """
         return [i for i, inertia in enumerate(self.robot.model.inertias.tolist()) 
-                if inertia.mass != 0]
+                if abs(inertia.mass) > 1e-9]
 
     def _build_joint_torque_regressor(self, Q, V, A, N, identif_config=None) -> np.ndarray:
         """Build regressor for joint torque identification."""
