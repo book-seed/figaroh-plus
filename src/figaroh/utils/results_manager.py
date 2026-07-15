@@ -299,14 +299,7 @@ class ResultsManager:
                          f"Condition: {condition_num:.2e} | "
                          f"RMSE: {rmse_norm:.6f}",
                          fontsize=16)
-            # plt.tight_layout()
-            plt.show()
-
-        except Exception as e:
-            self.logger.error(f"Error plotting identification results: {e}")
-            import traceback
-            traceback.print_exc()
-            plt.tight_layout()
+            fig.tight_layout(rect=[0, 0, 1, 0.95])
             plt.show()
 
         except Exception as e:
@@ -357,7 +350,7 @@ class ResultsManager:
                 self._plot_information_matrix(ax4, information_matrix)
 
             fig.suptitle(f"{self.robot_name.upper()} {title}", fontsize=16)
-            plt.tight_layout()
+            fig.tight_layout(rect=[0, 0, 1, 0.95])
             plt.show()
 
         except Exception as e:
@@ -450,9 +443,9 @@ class ResultsManager:
             for ax in bottom_axes:
                 ax.set_xlabel('Time (s)')
 
-            fig.suptitle(f"{self.robot_name.upper()} {title}\nCondition Number: {condition_number:.2e}", 
+            fig.suptitle(f"{self.robot_name.upper()} {title}\nCondition Number: {condition_number:.2e}",
                         fontsize=16)
-            plt.tight_layout()
+            fig.tight_layout(rect=[0, 0, 1, 0.95])
 
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
