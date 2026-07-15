@@ -1,0 +1,18 @@
+{
+  "change": "symbolic-fourier-trajectory",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "88db0d1083102a714ad5590f1eb2533b4c5914c51d22d177e8ced95b35498cca",
+  "files": [
+    { "path": "openspec/changes/symbolic-fourier-trajectory/proposal.md", "sha256": "b5972e0e7e42e5f3ac2964b73c1c5466b683efb8bc9750208d1d4a38fc416297" },
+    { "path": "openspec/changes/symbolic-fourier-trajectory/design.md", "sha256": "0d9f9d6cd92d55f488a324926efaabbb9a791b3e945d948a30375afe1e41e563" },
+    { "path": "openspec/changes/symbolic-fourier-trajectory/tasks.md", "sha256": "a4be3fc97ea98d5c662a2c9593ebb4acd784d468f0ea5e4949233b13ed56d6f2" },
+    { "path": "openspec/changes/symbolic-fourier-trajectory/specs/configurable-sampling/spec.md", "sha256": "2d1554f683e6b2bc0decf0df41987588118794dccfe502eba5a58ba8b491508a" },
+    { "path": "openspec/changes/symbolic-fourier-trajectory/specs/excitation-trajectory-optimization/spec.md", "sha256": "ad674043b3e1730798612816506332a9843bb471427f50c0fdd451e1d9e4ed9f" },
+    { "path": "openspec/changes/symbolic-fourier-trajectory/specs/fourier-trajectory-parameterization/spec.md", "sha256": "8169d649dff06d2aa43b685f12d8fdc59bfe998c27f94d0bd68eb513880693de" },
+    { "path": "openspec/changes/symbolic-fourier-trajectory/specs/symbolic-casadi-pipeline/spec.md", "sha256": "00d4368f0d66cd56b287da93c9823daa291c4d796c0d983a34cb6fd1dd1219d6" },
+    { "path": "openspec/changes/symbolic-fourier-trajectory/specs/unified-friction-model/spec.md", "sha256": "9094a1b5844358e5856a4675cd9aa1b88f8a2511ad3710bbb707c7f5aa85cea7" }
+  ]
+}
