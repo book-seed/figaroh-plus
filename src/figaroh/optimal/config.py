@@ -32,6 +32,15 @@ from figaroh.utils.config_parser import (
     is_unified_config,
 )
 
+_FOURIER_DEFAULTS = {
+    "n_harmonics": 5,
+    "fourier_frequency": None,
+    "n_samples": 200,
+    "reg_lambda": 1.0e-6,
+    "tanh_alpha_opt": 10,
+    "tanh_alpha_id": 100,
+}
+
 
 class ConfigurationManager:
     """Manages configuration loading and validation."""
@@ -75,6 +84,8 @@ def load_param(robot, config_file: str) -> Tuple[Dict[str, Any], Any]:
                 "max_attempts": traj_params.get("max_attempts", 1000),
                 "backend": config["identification"].get("backend", "numerical"),
             }
+            trajectory_config["trajectory_type"] = "spline"
+            trajectory_config["fourier_config"] = dict(_FOURIER_DEFAULTS)
         return trajectory_config, identif_config
 
     except FileNotFoundError:
@@ -93,6 +104,19 @@ def create_config(unified_traj_config) -> dict:
     traj_params = unified_traj_config.get("trajectory", {})
     constraint_params = unified_traj_config.get("constraints", {})
     output_params = unified_traj_config.get("output", {})
+
+    trajectory_type = traj_params.get("type", "spline")
+    if trajectory_type not in ("spline", "fourier"):
+        raise ValueError(
+            f"Invalid trajectory_type: '{trajectory_type}'. "
+            "Must be 'spline' or 'fourier'."
+        )
+
+    fourier_raw = traj_params.get("fourier", {})
+    fourier_config = {}
+    for key, default in _FOURIER_DEFAULTS.items():
+        fourier_config[key] = fourier_raw.get(key, default)
+
     trajectory_config = {
         "n_wps": traj_params.get("waypoints", 5),
         "freq": traj_params.get("frequency", 100),
@@ -100,5 +124,7 @@ def create_config(unified_traj_config) -> dict:
         "soft_lim": problem_params.get("soft_lim", 0.05),
         "max_attempts": problem_params.get("max_attempts", 1000),
         "backend": problem_params.get("backend", "numerical"),
+        "trajectory_type": trajectory_type,
+        "fourier_config": fourier_config,
     }
     return trajectory_config
