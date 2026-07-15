@@ -71,13 +71,12 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         n_samples = cfg["n_samples"]
         reg_lambda = cfg["reg_lambda"]
         tanh_alpha_opt = cfg["tanh_alpha_opt"]
-        tanh_alpha_id = cfg["tanh_alpha_id"]
+        tanh_alpha_id = cfg["tanh_alpha_id"]  # reserved for identification phase (not used in optimization)
         freq = cfg.get("fourier_frequency")
 
         cas_be = context._backend
         cas_be._ensure_symbolic_model()
         cmodel = cas_be._cmodel
-        nq = cmodel.nq
         nv = cmodel.nv
 
         # ── 1. Problem dimensions ──────────────────────────────────
@@ -176,14 +175,18 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         tau_raw = rnea_map_fun(Q_full, V_full, A_full)  # (nv, Ns)
 
         # Add friction model: tau += fv*v + fs*tanh(alpha*v)
+        # Use nominal friction coefficients from standard parameters
+        # (fall back to small defaults if not available)
+        fv_coeff = float(context.identif_config.get("fv_nominal", 0.1))
+        fs_coeff = float(context.identif_config.get("fs_nominal", 0.5))
         has_friction = context.identif_config.get("has_friction", False)
         if has_friction:
             for j in range(n_act):
                 jid = act_idxv[j]
-                # Viscous friction (velocity-proportional, implicit unit coeff)
-                tau_raw[jid, :] += V_full[jid, :]
-                # Coulomb friction (tanh approximation, implicit unit coeff)
-                tau_raw[jid, :] += cs.tanh(tanh_alpha_opt * V_full[jid, :])
+                # Viscous friction (velocity-proportional)
+                tau_raw[jid, :] += fv_coeff * V_full[jid, :]
+                # Coulomb friction (tanh approximation)
+                tau_raw[jid, :] += fs_coeff * cs.tanh(tanh_alpha_opt * V_full[jid, :])
 
         # Flatten torque to (Ns * nv,) -- constraint order: per-sample, all joints
         tau_flat = tau_raw.T.reshape(-1)  # (Ns * nv,)
@@ -369,7 +372,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
                             q_init[i, j] < q_lower[j]:
                         violated = True
                     if abs(v_init[i, j]) > model.velocityLimit[
-                            act_idxq[j]]:
+                            act_idxv[j]]:
                         violated = True
 
             if not violated:
