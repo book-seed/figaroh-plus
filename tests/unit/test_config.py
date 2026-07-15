@@ -85,7 +85,7 @@ class TestBaseOptimalTrajectoryBackendPrecedence:
         }
 
         with patch("figaroh.optimal.base_optimal_trajectory.load_param") as mock_load:
-            mock_load.return_value = (traj_config_with_backend, {})
+            mock_load.return_value = (traj_config_with_backend, {"active_joints": ["joint1"]})
             with patch(
                 "figaroh.optimal.base_optimal_trajectory.create_backend"
             ) as mock_create:
@@ -114,7 +114,7 @@ class TestBaseOptimalTrajectoryBackendPrecedence:
         }
 
         with patch("figaroh.optimal.base_optimal_trajectory.load_param") as mock_load:
-            mock_load.return_value = (traj_config_with_backend, {})
+            mock_load.return_value = (traj_config_with_backend, {"active_joints": ["joint1"]})
             with patch(
                 "figaroh.optimal.base_optimal_trajectory.create_backend"
             ) as mock_create:
@@ -142,7 +142,7 @@ class TestBaseOptimalTrajectoryBackendPrecedence:
         }
 
         with patch("figaroh.optimal.base_optimal_trajectory.load_param") as mock_load:
-            mock_load.return_value = (traj_config_no_backend, {})
+            mock_load.return_value = (traj_config_no_backend, {"active_joints": ["joint1"]})
             with patch(
                 "figaroh.optimal.base_optimal_trajectory.create_backend"
             ) as mock_create:

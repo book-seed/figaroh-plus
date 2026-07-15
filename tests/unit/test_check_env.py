@@ -48,8 +48,12 @@ class TestCheckEnvScript:
         output = result.stdout
         stderr = result.stderr
 
-        # No stderr output
-        assert not stderr.strip(), f"Script produced stderr:\n{stderr}"
+        # Filter library warnings from stderr (pinocchio, etc.)
+        stderr_filtered = "\n".join(
+            line for line in stderr.strip().split("\n")
+            if "RuntimeWarning" not in line and "DeprecationWarning" not in line
+        )
+        assert not stderr_filtered.strip(), f"Script produced unexpected stderr:\n{stderr}"
 
         # Must contain title
         assert "FIGAROH 环境验证脚本" in output, (

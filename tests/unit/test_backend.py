@@ -548,7 +548,9 @@ class TestTrajectoryStrategyIntegration:
                 traj = BaseOptimalTrajectory(
                     robot, ["joint1"], config_file="dummy.yaml",
                 )
-                mock_create.assert_called_once_with("fourier")
+                mock_create.assert_called_once_with(
+                    "fourier", fourier_config={"n_harmonics": 5}
+                )
                 assert traj.strategy.name() == "fourier"
 
     def test_solve_delegates_to_strategy(self):
