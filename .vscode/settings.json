@@ -4,6 +4,6 @@
         "${workspaceFolder}/figaroh-examples",
         "${workspaceFolder}/.pixi/envs/default/lib/python3.12/site-packages"
     ],
-    "python-envs.defaultEnvManager": "ms-python.python:system",
-    "Codegeex.RepoIndex": true
+    "python-envs.defaultEnvManager": "renan-r-santos.pixi-code:pixi",
+    "python-envs.defaultPackageManager": "renan-r-santos.pixi-code:pixi"
 }

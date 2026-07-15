@@ -35,7 +35,7 @@ class TrajectoryConstraintManager:
         self.freq = trajectory_config["freq"]
         self.identif_config = identif_config
         self.collision_wrapper = CollisionWrapper(robot=robot, viz=None)
-
+        
     def get_variable_bounds(self) -> Tuple[List[float], List[float]]:
         """Get variable bounds for optimization."""
         lb, ub = [], []
