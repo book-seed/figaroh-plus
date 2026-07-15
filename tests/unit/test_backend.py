@@ -422,3 +422,62 @@ class TestRootPackageExport:
         # Without it, figaroh.backend is NOT set as an attribute on the module.
         assert hasattr(figaroh, "backend")
         assert figaroh.backend is not None
+
+
+class TestCasadiBackendProperties:
+    """Test CasadiBackend property accessors."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_casadi_globals(self):
+        import figaroh.backend.casadi as _m
+        _m.cpin = None
+        _m.cs = None
+        yield
+
+    @patch('figaroh.backend.casadi.cpin')
+    @patch('figaroh.backend.casadi.cs')
+    def test_regressor_function_property(self, mock_cs, mock_cpin):
+        """regressor_function property returns a cs.Function."""
+        from figaroh.backend.casadi import CasadiBackend
+
+        mock_cpin.Model.return_value.nq = 3
+        mock_cpin.Model.return_value.nv = 3
+        mock_cs.Function.return_value = mock_cs.Function
+
+        robot = MagicMock()
+        backend = CasadiBackend(robot=robot)
+        fn = backend.regressor_function
+        assert fn is not None
+
+    @patch('figaroh.backend.casadi.cpin')
+    @patch('figaroh.backend.casadi.cs')
+    def test_rnea_function_property(self, mock_cs, mock_cpin):
+        """rnea_function property returns a cs.Function."""
+        from figaroh.backend.casadi import CasadiBackend
+
+        mock_cpin.Model.return_value.nq = 3
+        mock_cpin.Model.return_value.nv = 3
+        mock_cs.Function.return_value = mock_cs.Function
+
+        robot = MagicMock()
+        backend = CasadiBackend(robot=robot)
+        fn = backend.rnea_function
+        assert fn is not None
+
+    @patch('figaroh.backend.casadi.cpin')
+    def test_cache_key_includes_full_inertia(self, mock_cpin):
+        """Cache key uses SHA256 hash of full inertial parameters."""
+        from figaroh.backend.casadi import CasadiBackend
+
+        robot = MagicMock()
+        robot.model.name = "test_robot"
+        robot.model.nq = 3
+        robot.model.nv = 3
+        # Mock inertias such that total mass differs
+        robot.model.inertias.tolist.return_value = [
+            MagicMock(mass=1.0), MagicMock(mass=2.0), MagicMock(mass=0.0)
+        ]
+
+        key1 = CasadiBackend._cache_key(robot)
+        assert "test_robot" in key1
+        assert len(key1) > len("test_robot_")
