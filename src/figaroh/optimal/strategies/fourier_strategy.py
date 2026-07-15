@@ -77,6 +77,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         cas_be = context._backend
         cas_be._ensure_symbolic_model()
         cmodel = cas_be._cmodel
+        nq = cmodel.nq
         nv = cmodel.nv
 
         # ── 1. Problem dimensions ──────────────────────────────────

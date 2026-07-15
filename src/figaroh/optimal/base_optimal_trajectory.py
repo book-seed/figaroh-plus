@@ -99,7 +99,11 @@ class BaseOptimalTrajectory:
 
         # ── Strategy pattern ──────────────────────────────────────────
         traj_type = self.trajectory_config.get("trajectory_type", "spline")
-        self.strategy = create_strategy(traj_type)
+        if traj_type == "fourier":
+            fourier_cfg = self.trajectory_config.get("fourier_config", {})
+            self.strategy = create_strategy(traj_type, fourier_config=fourier_cfg)
+        else:
+            self.strategy = create_strategy(traj_type)
         self.logger.info(
             "Trajectory optimization strategy: %s", self.strategy.name()
         )
