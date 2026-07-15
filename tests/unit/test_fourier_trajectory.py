@@ -183,3 +183,109 @@ class TestFourierExpression:
         assert q_val == pytest.approx(expected_q, abs=1e-10)
         assert v_val == pytest.approx(expected_v, abs=1e-10)
         assert a_val == pytest.approx(expected_a, abs=1e-10)
+
+
+class TestFiniteDifference:
+    """Compare CasADi symbolic expressions against finite differences."""
+
+    def test_casadi_symbolic_vs_fd_velocity(self):
+        """CasADi Jacobian dq/dt matches finite difference of numpy eval."""
+        pytest.importorskip("casadi")
+        import casadi as cs
+        import numpy as np
+        from figaroh.utils.fourier_trajectory import FourierTrajectory
+
+        n_harmonics = 4
+        n_act = 2
+        omega = 2.0
+        traj = FourierTrajectory(n_harmonics=n_harmonics, n_act=n_act, omega=omega)
+
+        rng = np.random.default_rng(42)
+        coeffs = rng.uniform(-0.1, 0.1, size=(n_act, 2 * n_harmonics + 1))
+        coeffs[:, 0] = 0.5
+
+        # -- CasADi symbolic velocity via Jacobian --
+        t_sym = cs.SX.sym("t")
+        coeffs_sym = cs.SX.sym("coeffs", n_act, 2 * n_harmonics + 1)
+        q_sx = traj.build_casadi_expression(t_sym, coeffs_sym)
+        v_sx = cs.jacobian(q_sx, t_sym)  # dq/dt
+        v_fn = cs.Function("v_sym", [t_sym, coeffs_sym], [v_sx])
+
+        # -- Finite difference of numpy evaluation --
+        t_vals = np.array([0.2, 1.3, 2.7])
+        eps = 1e-6
+
+        for t0 in t_vals:
+            v_sym_val = np.array(v_fn(t0, coeffs)).flatten()
+            q_plus = traj.get_trajectory(np.array([t0 + eps]), coeffs).flatten()
+            q_minus = traj.get_trajectory(np.array([t0 - eps]), coeffs).flatten()
+            v_fd = (q_plus - q_minus) / (2 * eps)
+
+            np.testing.assert_allclose(v_sym_val, v_fd, atol=1e-4)
+
+    def test_casadi_symbolic_vs_fd_acceleration(self):
+        """CasADi second derivative d2q/dt2 matches finite difference of numpy eval."""
+        pytest.importorskip("casadi")
+        import casadi as cs
+        import numpy as np
+        from figaroh.utils.fourier_trajectory import FourierTrajectory
+
+        n_harmonics = 4
+        n_act = 2
+        omega = 2.0
+        traj = FourierTrajectory(n_harmonics=n_harmonics, n_act=n_act, omega=omega)
+
+        rng = np.random.default_rng(42)
+        coeffs = rng.uniform(-0.1, 0.1, size=(n_act, 2 * n_harmonics + 1))
+        coeffs[:, 0] = 0.5
+
+        # -- CasADi symbolic acceleration via second Jacobian --
+        t_sym = cs.SX.sym("t")
+        coeffs_sym = cs.SX.sym("coeffs", n_act, 2 * n_harmonics + 1)
+        q_sx = traj.build_casadi_expression(t_sym, coeffs_sym)
+        v_sx = cs.jacobian(q_sx, t_sym)
+        a_sx = cs.jacobian(v_sx, t_sym)  # d2q/dt2
+        a_fn = cs.Function("a_sym", [t_sym, coeffs_sym], [a_sx])
+
+        # -- Finite difference of numpy evaluation (second order) --
+        t_vals = np.array([0.2, 1.3, 2.7])
+        eps = 1e-4  # larger eps for second derivative FD
+
+        for t0 in t_vals:
+            a_sym_val = np.array(a_fn(t0, coeffs)).flatten()
+            q_plus = traj.get_trajectory(np.array([t0 + eps]), coeffs).flatten()
+            q_center = traj.get_trajectory(np.array([t0]), coeffs).flatten()
+            q_minus = traj.get_trajectory(np.array([t0 - eps]), coeffs).flatten()
+            a_fd = (q_plus - 2 * q_center + q_minus) / (eps ** 2)
+
+            np.testing.assert_allclose(a_sym_val, a_fd, atol=1e-2)
+
+    def test_casadi_get_velocity_matches_direct(self):
+        """FourierTrajectory.get_velocity matches CasADi Jacobian evaluation."""
+        pytest.importorskip("casadi")
+        import casadi as cs
+        import numpy as np
+        from figaroh.utils.fourier_trajectory import FourierTrajectory
+
+        n_harmonics = 5
+        n_act = 3
+        omega = 1.5
+        traj = FourierTrajectory(n_harmonics=n_harmonics, n_act=n_act, omega=omega)
+
+        rng = np.random.default_rng(7)
+        coeffs = rng.uniform(-0.2, 0.2, size=(n_act, 2 * n_harmonics + 1))
+        coeffs[:, 0] = 0.3
+
+        # CasADi symbolic velocity
+        t_sym = cs.SX.sym("t")
+        coeffs_sym = cs.SX.sym("coeffs", n_act, 2 * n_harmonics + 1)
+        q_sx = traj.build_casadi_expression(t_sym, coeffs_sym)
+        v_sx = cs.jacobian(q_sx, t_sym)
+        v_cs_fn = cs.Function("v_cs", [t_sym, coeffs_sym], [v_sx])
+
+        # Compare at multiple time points
+        t_vals = np.linspace(0, 2 * np.pi, 50)
+        v_np = traj.get_velocity(t_vals, coeffs)
+        v_cs = np.array([v_cs_fn(t, coeffs).toarray().flatten() for t in t_vals])
+
+        np.testing.assert_allclose(v_cs, v_np, atol=1e-10)

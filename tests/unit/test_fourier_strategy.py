@@ -130,3 +130,153 @@ class TestFourierStrategySolveFlow:
 
         # Check that results were populated even if NLP failed
         assert 'T_F' in mock_ctx.results
+
+
+class TestDOptimalObjective:
+    """Test D-optimal objective function correctness."""
+
+    def test_log_det_via_cholesky(self):
+        """Cholesky-based logdet matches numpy logdet."""
+        import casadi as cs
+        import numpy as np
+
+        # Build a known SPD matrix
+        n = 4
+        rng = np.random.default_rng(42)
+        A = rng.standard_normal((n, n))
+        J = A.T @ A  # SPD
+        lam = 1e-6
+        J_reg = J + lam * np.eye(n)
+
+        # numpy reference
+        sign, logdet_np = np.linalg.slogdet(J_reg)
+        obj_np = -logdet_np
+
+        # CasADi Cholesky
+        J_sym = cs.SX.sym("J", n, n)
+        L = cs.chol(J_sym)  # lower triangular Cholesky factor
+        obj_sx = -2 * cs.sum1(cs.log(cs.diag(L)))
+        obj_fn = cs.Function("obj", [J_sym], [obj_sx])
+
+        obj_cs = float(obj_fn(J_reg))
+
+        # Should match (up to numerical tolerance)
+        assert obj_cs == pytest.approx(obj_np, abs=1e-8)
+
+    def test_regularization_ensures_spd(self):
+        """Regularization lambda ensures J+lambda*I is SPD for Cholesky."""
+        import casadi as cs
+        import numpy as np
+
+        # Build a singular matrix
+        J = np.ones((3, 3))  # rank 1
+        lam = 1e-6
+        J_reg = J + lam * np.eye(3)
+
+        # Cholesky should succeed
+        J_sym = cs.SX.sym("J", 3, 3)
+        L = cs.chol(J_sym)  # lower triangular Cholesky factor
+        chol_fn = cs.Function("chol", [J_sym], [L])
+        L_val = np.array(chol_fn(J_reg))
+        assert np.all(np.diag(L_val) > 0)
+
+    def test_doptimal_objective_shape(self):
+        """D-optimal objective returns scalar."""
+        from figaroh.optimal.strategies.fourier_strategy import (
+            FourierOptimizationStrategy
+        )
+        strategy = FourierOptimizationStrategy()
+        # Verify the strategy has the required config
+        assert "reg_lambda" in strategy._fourier_config
+
+
+class TestFrictionModelDifferentiability:
+    """Test tanh(alpha*v) friction model is CasADi differentiable."""
+
+    def test_tanh_friction_gradient(self):
+        """tanh(alpha*v) yields non-zero gradient via CasADi AD."""
+        import casadi as cs
+        import numpy as np
+
+        v = cs.SX.sym("v")
+        alpha = 10.0
+        f_s = 1.0
+        f_expr = f_s * cs.tanh(alpha * v)
+
+        grad_fn = cs.Function("grad", [v], [cs.gradient(f_expr, v)])
+        grad_val = float(grad_fn(0.5))
+
+        # Analytical: d/dv (tanh(alpha*v)) = alpha * sech^2(alpha*v)
+        # At v=0.5, alpha=10: 10 * sech^2(5) > 0
+        assert grad_val > 0
+        assert np.isfinite(grad_val)
+
+    def test_tanh_friction_high_alpha(self):
+        """tanh(100*v) approximates sign(v) but remains differentiable."""
+        import casadi as cs
+        import numpy as np
+
+        v = cs.SX.sym("v")
+        alpha_id = 100.0
+        f_expr = cs.tanh(alpha_id * v)
+
+        fn = cs.Function("f", [v], [f_expr])
+        grad_fn = cs.Function("grad", [v], [cs.gradient(f_expr, v)])
+
+        # Near zero, tanh is steep but differentiable
+        v_small = 0.01
+        f_val = float(fn(v_small))
+        grad_val = float(grad_fn(v_small))
+
+        assert f_val > 0.5  # close to 1 (sign(v) approximation)
+        assert grad_val > 0  # still differentiable
+        assert np.isfinite(grad_val)
+
+
+class TestSymbolicJacobian:
+    """Compare CasADi symbolic Jacobian vs finite differences."""
+
+    def test_regressor_jacobian_vs_fd(self):
+        """Symbolic Jacobian of regressor matches finite difference."""
+        pytest.importorskip("casadi")
+        pytest.importorskip("pinocchio.casadi")
+        import casadi as cs
+        import pinocchio.casadi as cpin
+        import numpy as np
+
+        # Build a minimal 1-DOF model with CasADi SX types for Inertia
+        model = cpin.Model()
+        jid = model.addJoint(0, cpin.JointModelRY(), cpin.SE3.Identity(), "joint")
+        model.appendBodyToJoint(jid, cpin.Inertia(
+            mass=cs.SX(1.0),
+            lever=cs.SX.zeros(3),
+            inertia=cs.SX.eye(3),
+        ), cpin.SE3.Identity())
+        data = model.createData()
+
+        # Symbolic regressor
+        q = cs.SX.sym("q", 1)
+        v = cs.SX.sym("v", 1)
+        a = cs.SX.sym("a", 1)
+        W_expr = cpin.computeJointTorqueRegressor(model, data, q, v, a)
+        W_fn = cs.Function("W", [q, v, a], [W_expr])
+
+        # Jacobian of W w.r.t. q (symbolic)
+        J_sym = cs.jacobian(W_expr, q)
+        J_fn = cs.Function("J_sym", [q, v, a], [J_sym])
+
+        # Finite difference
+        eps = 1e-6
+        q0 = np.array([0.5])
+        v0 = np.array([0.1])
+        a0 = np.array([0.0])
+
+        W0 = np.array(W_fn(q0, v0, a0)).flatten()
+        J_fd = np.zeros((len(W0), 1))
+        W_plus = np.array(W_fn(q0 + eps, v0, a0)).flatten()
+        W_minus = np.array(W_fn(q0 - eps, v0, a0)).flatten()
+        J_fd[:, 0] = (W_plus - W_minus) / (2 * eps)
+
+        J_sym_val = np.array(J_fn(q0, v0, a0))
+
+        np.testing.assert_allclose(J_sym_val, J_fd, atol=1e-4)

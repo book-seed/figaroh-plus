@@ -123,3 +123,106 @@ identification:
                     assert traj_config["n_wps"] == 8
                     assert traj_config["freq"] == 50
                     assert traj_config["trajectory_type"] == "spline"  # default
+
+
+class TestConfigStrategyIntegration:
+    """Test config-to-strategy integration."""
+
+    def test_create_strategy_from_default_config(self):
+        """Default output from create_config can create a fourier strategy."""
+        pytest.importorskip("casadi")
+        from figaroh.optimal.config import create_config
+        from figaroh.optimal.strategies import create_strategy
+
+        unified_cfg = {
+            "problem": {},
+            "trajectory": {"type": "fourier"},
+            "constraints": {},
+            "output": {},
+        }
+        cfg = create_config(unified_cfg)
+        assert cfg["trajectory_type"] == "fourier"
+
+        strategy = create_strategy(
+            cfg["trajectory_type"],
+            fourier_config=cfg.get("fourier_config"),
+        )
+        assert strategy.name() == "fourier"
+        assert strategy._fourier_config["n_harmonics"] == 5
+        assert strategy._fourier_config["n_samples"] == 200
+        assert strategy._fourier_config["reg_lambda"] == 1.0e-6
+        assert strategy._fourier_config["tanh_alpha_opt"] == 10
+        assert strategy._fourier_config["tanh_alpha_id"] == 100
+
+    def test_create_strategy_with_custom_config(self):
+        """Custom fourier config propagates through create_strategy."""
+        pytest.importorskip("casadi")
+        from figaroh.optimal.config import create_config
+        from figaroh.optimal.strategies import create_strategy
+
+        unified_cfg = {
+            "problem": {},
+            "trajectory": {
+                "type": "fourier",
+                "fourier": {
+                    "n_harmonics": 8,
+                    "n_samples": 100,
+                    "reg_lambda": 1.0e-8,
+                    "tanh_alpha_opt": 20,
+                    "tanh_alpha_id": 200,
+                },
+            },
+            "constraints": {},
+            "output": {},
+        }
+        cfg = create_config(unified_cfg)
+
+        strategy = create_strategy(
+            cfg["trajectory_type"],
+            fourier_config=cfg.get("fourier_config"),
+        )
+        assert strategy.name() == "fourier"
+        assert strategy._fourier_config["n_harmonics"] == 8
+        assert strategy._fourier_config["n_samples"] == 100
+        assert strategy._fourier_config["reg_lambda"] == 1.0e-8
+        assert strategy._fourier_config["tanh_alpha_opt"] == 20
+        assert strategy._fourier_config["tanh_alpha_id"] == 200
+
+    def test_create_strategy_spline_default_config(self):
+        """Default spline config creates SplineOptimizationStrategy."""
+        from figaroh.optimal.config import create_config
+        from figaroh.optimal.strategies import create_strategy
+
+        unified_cfg = {
+            "problem": {},
+            "trajectory": {},
+            "constraints": {},
+            "output": {},
+        }
+        cfg = create_config(unified_cfg)
+        assert cfg["trajectory_type"] == "spline"
+
+        strategy = create_strategy(cfg["trajectory_type"])
+        assert strategy.name() == "spline"
+
+    def test_create_strategy_fourier_default_with_frequency(self):
+        """Fourier frequency config propagates to strategy."""
+        pytest.importorskip("casadi")
+        from figaroh.optimal.config import create_config
+        from figaroh.optimal.strategies import create_strategy
+
+        unified_cfg = {
+            "problem": {},
+            "trajectory": {
+                "type": "fourier",
+                "fourier": {"fourier_frequency": 2.5},
+            },
+            "constraints": {},
+            "output": {},
+        }
+        cfg = create_config(unified_cfg)
+        strategy = create_strategy(
+            cfg["trajectory_type"],
+            fourier_config=cfg.get("fourier_config"),
+        )
+        assert strategy._fourier_config["fourier_frequency"] == 2.5
