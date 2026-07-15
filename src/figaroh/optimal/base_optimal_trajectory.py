@@ -47,6 +47,7 @@ from figaroh.tools.robotipopt import (
 from figaroh.optimal.config import load_param
 from figaroh.optimal.base_parameter import BaseParameterComputer
 from figaroh.optimal.contraints import TrajectoryConstraintManager
+from figaroh.optimal.strategies import create_strategy
 
 
 class BaseOptimalTrajectory:
@@ -95,6 +96,13 @@ class BaseOptimalTrajectory:
             effective_backend = backend
         self._backend = create_backend(effective_backend, robot=robot)
 
+        # ── Strategy pattern ──────────────────────────────────────────
+        traj_type = self.trajectory_config.get("trajectory_type", "spline")
+        self.strategy = create_strategy(traj_type)
+        self.logger.info(
+            "Trajectory optimization strategy: %s", self.strategy.name()
+        )
+
         # Results storage
         self.results = {
             'T_F': [], 'P_F': [], 'V_F': [], 'A_F': [],
@@ -120,67 +128,30 @@ class BaseOptimalTrajectory:
         self.logger.info(f"BaseOptimalTrajectory initialized with {len(self.idx_b)} base parameters")
 
     def solve(self, stack_reps: int = 2) -> Dict[str, Any]:
-        """
-        Solve the optimal trajectory generation problem.
+        """Solve the optimal trajectory generation problem.
+
+        Delegates to the active strategy. The strategy is responsible for
+        populating self.results with the standard format.
 
         Args:
             stack_reps: Number of trajectory segments to stack
+                (only used by spline strategy).
 
         Returns:
-            Dict containing trajectories and optimization info
+            Dict containing trajectories and optimization info.
         """
-        self.logger.info(f"Starting optimal trajectory generation with {stack_reps} segments...")
+        self.logger.info(
+            "Starting optimal trajectory generation with %s strategy...",
+            self.strategy.name(),
+        )
 
         try:
-            self.WP = WaypointsGeneration(
-                self.robot,
-                self.trajectory_config["n_wps"],
-                self.active_joints,
-                self.soft_lim_pool,
+            self.strategy.solve(self)
+
+            self.logger.info(
+                "Completed! Generated %d trajectory segments",
+                len(self.results['T_F']),
             )
-            
-            self.constraint_manager = TrajectoryConstraintManager(
-            self.robot, self.WP, self.trajectory_config, self.identif_config
-            )
-            
-            self.WP.gen_rand_pool()
-            wp_init = np.zeros(len(self.WP.act_idxq))       
-            vel_wp_init = np.zeros(len(self.WP.act_idxv))
-            acc_wp_init = np.zeros(len(self.WP.act_idxv))
-
-            # 从 pool_q 中随机选取满足 (center-half_range, center+half_range) 的值
-            # 缩放因子：0.8。若没有满足条件的样本，则从整个 pool_q 中随机选取。
-            rng = np.random.default_rng(100)
-            for idx in range(len(self.WP.act_idxq)):
-                center = (self.WP.lower_q[idx] + self.WP.upper_q[idx]) / 2
-                half_range = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 1.0
-                q_pool = np.asarray(self.WP.pool_q)[:, idx]
-                valid_q = q_pool[(q_pool >= (center - half_range)) & (q_pool <= (center + half_range))]
-                if valid_q.size == 0:
-                    raise RuntimeError(
-                        f"No pool samples within ({center - half_range:.6g}, {center + half_range:.6g}) "
-                        f"for joint index {idx}; pool size={q_pool.size}"
-                    )
-                wp_init[idx] = float(rng.choice(valid_q))
-
-            W_stack = None
-
-            for s_rep in range(stack_reps):
-                self.logger.info(f"Optimizing segment {s_rep + 1}/{stack_reps}")
-                self.logger.info(f"Initial waypoint: {wp_init}")
-
-                success = self._solve_segment(s_rep, wp_init, vel_wp_init, acc_wp_init, W_stack)
-
-                if not success:
-                    self.logger.error(f"Failed to solve segment {s_rep + 1}")
-                    break
-
-                # Update for next segment
-                if s_rep < stack_reps - 1:  # Not the last segment
-                    wp_init, W_stack = self._prepare_next_segment()
-
-            self.logger.info(f"Completed! Generated {len(self.results['T_F'])} trajectory segments")
-            self.results["final_regressor_shape"] = (W_stack.shape if W_stack is not None else None)
             return self.results
 
         except Exception as e:

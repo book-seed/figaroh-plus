@@ -481,3 +481,137 @@ class TestCasadiBackendProperties:
         key1 = CasadiBackend._cache_key(robot)
         assert "test_robot" in key1
         assert len(key1) > len("test_robot_")
+
+
+class TestTrajectoryStrategyIntegration:
+    """Test strategy pattern integration with BaseOptimalTrajectory."""
+
+    def test_default_strategy_is_spline(self):
+        """Default trajectory_type 'spline' creates SplineOptimizationStrategy."""
+        from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
+        from figaroh.optimal.strategies.spline_strategy import (
+            SplineOptimizationStrategy,
+        )
+
+        robot = MagicMock()
+        robot.model.name = "test_robot"
+        robot.model.nq = 3
+        robot.model.nv = 3
+
+        with patch(
+            "figaroh.optimal.base_optimal_trajectory.load_param"
+        ) as mock_load:
+            mock_load.return_value = (
+                {
+                    "n_wps": 5, "freq": 100, "t_s": 2.0,
+                    "soft_lim": 0.05, "max_attempts": 1000,
+                    "trajectory_type": "spline",
+                    "fourier_config": {},
+                },
+                {"active_joints": ["joint1"]},
+            )
+            traj = BaseOptimalTrajectory(
+                robot, ["joint1"], config_file="dummy.yaml",
+            )
+            assert hasattr(traj, "strategy")
+            assert traj.strategy.name() == "spline"
+            assert isinstance(traj.strategy, SplineOptimizationStrategy)
+
+    def test_fourier_strategy_created_when_configured(self):
+        """trajectory_type 'fourier' creates FourierOptimizationStrategy."""
+        from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
+
+        robot = MagicMock()
+        robot.model.name = "test_robot"
+        robot.model.nq = 3
+        robot.model.nv = 3
+
+        with patch(
+            "figaroh.optimal.base_optimal_trajectory.load_param"
+        ) as mock_load:
+            mock_load.return_value = (
+                {
+                    "n_wps": 5, "freq": 100, "t_s": 2.0,
+                    "soft_lim": 0.05, "max_attempts": 1000,
+                    "trajectory_type": "fourier",
+                    "fourier_config": {"n_harmonics": 5},
+                },
+                {"active_joints": ["joint1"]},
+            )
+            with patch(
+                "figaroh.optimal.base_optimal_trajectory.create_strategy"
+            ) as mock_create:
+                mock_strategy = MagicMock()
+                mock_strategy.name.return_value = "fourier"
+                mock_create.return_value = mock_strategy
+
+                traj = BaseOptimalTrajectory(
+                    robot, ["joint1"], config_file="dummy.yaml",
+                )
+                mock_create.assert_called_once_with("fourier")
+                assert traj.strategy.name() == "fourier"
+
+    def test_solve_delegates_to_strategy(self):
+        """solve() delegates to strategy.solve()."""
+        from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
+
+        robot = MagicMock()
+        robot.model.name = "test_robot"
+
+        with patch(
+            "figaroh.optimal.base_optimal_trajectory.load_param"
+        ) as mock_load:
+            mock_load.return_value = (
+                {
+                    "n_wps": 5, "freq": 100, "t_s": 2.0,
+                    "soft_lim": 0.05, "max_attempts": 1000,
+                    "trajectory_type": "spline",
+                    "fourier_config": {},
+                },
+                {"active_joints": ["joint1"]},
+            )
+            traj = BaseOptimalTrajectory(
+                robot, ["joint1"], config_file="dummy.yaml",
+            )
+            # Replace strategy with mock
+            mock_strategy = MagicMock()
+            mock_strategy.name.return_value = "test"
+            traj.strategy = mock_strategy
+
+            traj.results = {
+                'T_F': [], 'P_F': [], 'V_F': [], 'A_F': [],
+                'iteration_data': [], 'final_regressor_shape': None,
+            }
+
+            traj.solve()
+
+            mock_strategy.solve.assert_called_once_with(traj)
+
+    def test_save_results_format_consistent(self):
+        """Both strategies produce same results format for save_results."""
+        from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
+
+        robot = MagicMock()
+        robot.model.name = "test_robot"
+        robot.model.nq = 3
+        robot.model.nv = 3
+
+        with patch(
+            "figaroh.optimal.base_optimal_trajectory.load_param"
+        ) as mock_load:
+            mock_load.return_value = (
+                {
+                    "n_wps": 5, "freq": 100, "t_s": 2.0,
+                    "soft_lim": 0.05, "max_attempts": 1000,
+                    "trajectory_type": "spline",
+                    "fourier_config": {},
+                },
+                {"active_joints": ["joint1"]},
+            )
+            traj = BaseOptimalTrajectory(
+                robot, ["joint1"], config_file="dummy.yaml",
+            )
+            # Verify results dict has expected format
+            expected_keys = {'T_F', 'P_F', 'V_F', 'A_F',
+                             'iteration_data', 'final_regressor_shape'}
+            assert expected_keys.issubset(traj.results.keys())
