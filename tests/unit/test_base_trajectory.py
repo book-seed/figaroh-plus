@@ -52,3 +52,31 @@ class TestBaseTrajectoryABC:
         assert not traj.check_constraints(
             np.zeros((10, 3)), np.zeros((10, 3)), np.zeros((10, 3)), None
         )
+
+class TestCubicSplineInheritance:
+    """Verify CubicSpline implements BaseTrajectory."""
+
+    def test_cubic_spline_is_base_trajectory(self):
+        """CubicSpline should be a subclass of BaseTrajectory."""
+        from figaroh.utils.base_trajectory import BaseTrajectory
+        from figaroh.utils.cubic_spline import CubicSpline
+        assert issubclass(CubicSpline, BaseTrajectory), \
+            "CubicSpline must inherit from BaseTrajectory"
+
+    def test_cubic_spline_is_not_abstract(self):
+        """CubicSpline should be concretely instantiable."""
+        from figaroh.utils.cubic_spline import CubicSpline
+        assert not hasattr(CubicSpline, '__abstractmethods__') or \
+            not CubicSpline.__abstractmethods__, \
+            "CubicSpline must implement all abstract methods"
+
+
+class TestWaypointsGenerationInheritance:
+    """Verify WaypointsGeneration also inherits BaseTrajectory."""
+
+    def test_waypoints_generation_is_base_trajectory(self):
+        """WaypointsGeneration (extends CubicSpline) should be BaseTrajectory."""
+        from figaroh.utils.base_trajectory import BaseTrajectory
+        from figaroh.utils.cubic_spline import WaypointsGeneration
+        assert issubclass(WaypointsGeneration, BaseTrajectory), \
+            "WaypointsGeneration must inherit from BaseTrajectory via CubicSpline"

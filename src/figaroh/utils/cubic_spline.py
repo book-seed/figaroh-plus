@@ -93,6 +93,8 @@ import ndcurves
 import numpy as np
 from matplotlib import pyplot as plt
 
+from figaroh.utils.base_trajectory import BaseTrajectory
+
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -101,7 +103,7 @@ logger.addHandler(logging.NullHandler())
 
 k = 1.5  # take accel limits as k times of vel limits
 
-class CubicSpline:
+class CubicSpline(BaseTrajectory):
     """
     Cubic spline trajectory generator for robotic systems.
     
@@ -361,6 +363,85 @@ class CubicSpline:
         ddq_full[:, self.act_idxv] = a_act
 
         return t, q_full, dq_full, ddq_full
+
+    # ── BaseTrajectory interface ───────────────────────────────────
+    def get_trajectory(self, t, coeffs):
+        """Evaluate position q(t) from spline waypoints.
+
+        Args:
+            t: Time points, shape (N,).
+            coeffs: Waypoints, shape (n_joints, n_waypoints).
+
+        Returns:
+            Position trajectory, shape (N, nq).
+        """
+        n_waypoints = coeffs.shape[1]
+        freq = int(1.0 / (t[1] - t[0])) if len(t) > 1 else 100
+        time_points = np.linspace(t[0], t[-1], n_waypoints).reshape(-1, 1)
+        _, q, _, _ = self.get_full_config(freq, time_points, coeffs)
+        return q
+
+    def get_velocity(self, t, coeffs):
+        """Evaluate velocity v(t) from spline waypoints.
+
+        Args:
+            t: Time points, shape (N,).
+            coeffs: Waypoints, shape (n_joints, n_waypoints).
+
+        Returns:
+            Velocity trajectory, shape (N, nv).
+        """
+        n_waypoints = coeffs.shape[1]
+        freq = int(1.0 / (t[1] - t[0])) if len(t) > 1 else 100
+        time_points = np.linspace(t[0], t[-1], n_waypoints).reshape(-1, 1)
+        _, _, v, _ = self.get_full_config(freq, time_points, coeffs)
+        return v
+
+    def get_acceleration(self, t, coeffs):
+        """Evaluate acceleration a(t) from spline waypoints.
+
+        Args:
+            t: Time points, shape (N,).
+            coeffs: Waypoints, shape (n_joints, n_waypoints).
+
+        Returns:
+            Acceleration trajectory, shape (N, nv).
+        """
+        n_waypoints = coeffs.shape[1]
+        freq = int(1.0 / (t[1] - t[0])) if len(t) > 1 else 100
+        time_points = np.linspace(t[0], t[-1], n_waypoints).reshape(-1, 1)
+        _, _, _, a = self.get_full_config(freq, time_points, coeffs)
+        return a
+
+    def compute_torques(self, q, v, a, robot):
+        """Compute joint torques from trajectory via pinocchio RNEA.
+
+        Args:
+            q: Position trajectory, shape (N, nq).
+            v: Velocity trajectory, shape (N, nv).
+            a: Acceleration trajectory, shape (N, nv).
+            robot: RobotWrapper instance.
+
+        Returns:
+            Joint torques, shape (N, nv).
+        """
+        from figaroh.utils.pin_interface import calc_torque
+        tau = calc_torque(q.shape[0], robot, q, v, a)
+        return tau.reshape(v.shape[1], v.shape[0]).transpose()
+
+    def check_constraints(self, q, v, tau, robot):
+        """Check trajectory joint constraints violation.
+
+        Args:
+            q: Position trajectory, shape (N, nq).
+            v: Velocity trajectory, shape (N, nv).
+            tau: Joint torques, shape (N, nv).
+            robot: RobotWrapper instance (unused — limits from self).
+
+        Returns:
+            True if any constraint is violated.
+        """
+        return self.check_cfg_constraints(q, v, tau)
 
     def check_cfg_constraints(self, q, v=None, tau=None):
         """
