@@ -57,7 +57,7 @@ base-ref: ad5ce2e9aad96aea6e625ed523ae2fb3761dcbac
 **Interfaces:**
 - Produces: `scripts/check_env.py` — 命令行可执行脚本，输出各组件状态
 
-- [ ] **Step 1: 编写环境验证脚本**
+- [x] **Step 1: 编写环境验证脚本**
 
 创建 `scripts/check_env.py`:
 
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 2: 确保脚本可执行**
+- [x] **Step 2: 确保脚本可执行**
 
 ```bash
 chmod +x scripts/check_env.py
@@ -190,7 +190,7 @@ python scripts/check_env.py
 ```
 预期输出：至少显示 CasADi、pinocchio 等组件的 PASS/FAIL 状态。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add scripts/check_env.py
@@ -208,7 +208,7 @@ git commit -m "feat(env): add environment verification script for CasADi/IPOPT/H
 **Interfaces:**
 - Produces: `trajectory_config` 字典新增 `trajectory_type`、`fourier_frequency`、`n_samples`、`n_harmonics`、`reg_lambda`、`tanh_alpha_opt`、`tanh_alpha_id` 字段
 
-- [ ] **Step 1: 编写配置解析扩展测试**
+- [x] **Step 1: 编写配置解析扩展测试**
 
 创建 `tests/unit/test_config_fourier.py`:
 
@@ -336,7 +336,7 @@ identification:
                 assert traj_config["trajectory_type"] == "spline"  # default
 ```
 
-- [ ] **Step 2: 运行测试检查失败**
+- [x] **Step 2: 运行测试检查失败**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -344,7 +344,7 @@ python -m pytest tests/unit/test_config_fourier.py -v
 ```
 预期输出：FAIL — `create_config` 尚未暴露新字段。
 
-- [ ] **Step 3: 扩展 `create_config()` 函数**
+- [x] **Step 3: 扩展 `create_config()` 函数**
 
 修改 `src/figaroh/optimal/config.py` 中的 `create_config()` 函数：
 
@@ -401,7 +401,7 @@ trajectory_config["fourier_config"] = dict(_FOURIER_DEFAULTS)
 
 在文件顶部添加 `_FOURIER_DEFAULTS` 字典（在 import 之后即可）。
 
-- [ ] **Step 4: 再次运行测试验证通过**
+- [x] **Step 4: 再次运行测试验证通过**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -409,7 +409,7 @@ python -m pytest tests/unit/test_config_fourier.py -v
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/optimal/config.py tests/unit/test_config_fourier.py
@@ -427,7 +427,7 @@ git commit -m "feat(config): add trajectory_type and fourier_config parsing"
 **Interfaces:**
 - Produces: `BaseTrajectory` ABC 定义 q/v/a 生成、约束检查、可视化的接口
 
-- [ ] **Step 1: 编写 BaseTrajectory ABC 测试**
+- [x] **Step 1: 编写 BaseTrajectory ABC 测试**
 
 创建 `tests/unit/test_base_trajectory.py`:
 
@@ -488,7 +488,7 @@ class TestBaseTrajectoryABC:
         )
 ```
 
-- [ ] **Step 2: 实现 BaseTrajectory ABC**
+- [x] **Step 2: 实现 BaseTrajectory ABC**
 
 创建 `src/figaroh/utils/base_trajectory.py`:
 
@@ -600,7 +600,7 @@ class BaseTrajectory(ABC):
         ...
 ```
 
-- [ ] **Step 3: 再次运行测试验证通过**
+- [x] **Step 3: 再次运行测试验证通过**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -608,7 +608,7 @@ python -m pytest tests/unit/test_base_trajectory.py -v
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add src/figaroh/utils/base_trajectory.py tests/unit/test_base_trajectory.py
@@ -627,7 +627,7 @@ git commit -m "feat(utils): add BaseTrajectory ABC for trajectory generation"
 - Consumes: `BaseTrajectory` ABC
 - Produces: `FourierTrajectory(BaseTrajectory)` — 傅里叶级数 numpy 求值 + CasADi SX 表达式构建
 
-- [ ] **Step 1: 编写 FourierTrajectory 单元测试**
+- [x] **Step 1: 编写 FourierTrajectory 单元测试**
 
 创建 `tests/unit/test_fourier_trajectory.py`:
 
@@ -814,7 +814,7 @@ class TestFourierExpression:
         assert a_val == pytest.approx(expected_a, abs=1e-10)
 ```
 
-- [ ] **Step 2: 运行测试检查失败**
+- [x] **Step 2: 运行测试检查失败**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -822,7 +822,7 @@ python -m pytest tests/unit/test_fourier_trajectory.py -v
 ```
 预期输出：FAIL — `FourierTrajectory` 未定义。
 
-- [ ] **Step 3: 实现 FourierTrajectory**
+- [x] **Step 3: 实现 FourierTrajectory**
 
 创建 `src/figaroh/utils/fourier_trajectory.py`:
 
@@ -1006,7 +1006,7 @@ class FourierTrajectory(BaseTrajectory):
         return q_expr
 ```
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -1014,7 +1014,7 @@ python -m pytest tests/unit/test_fourier_trajectory.py -v
 ```
 预期输出：所有测试 PASS（CasADi 相关测试需要环境中有 CasADi，否则被 `pytest.importorskip` 跳过）。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/utils/fourier_trajectory.py tests/unit/test_fourier_trajectory.py
@@ -1034,7 +1034,7 @@ git commit -m "feat(utils): add FourierTrajectory with numpy eval and CasADi SX 
 **Interfaces:**
 - Produces: `TrajectoryOptimizationStrategy` ABC + `SplineOptimizationStrategy` + 工厂函数 `create_strategy`
 
-- [ ] **Step 1: 编写策略模式测试**
+- [x] **Step 1: 编写策略模式测试**
 
 创建 `tests/unit/test_strategies.py`:
 
@@ -1167,7 +1167,7 @@ class TestSplineStrategy:
             assert "T_F" in mock_context.results
 ```
 
-- [ ] **Step 2: 运行测试检查失败**
+- [x] **Step 2: 运行测试检查失败**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -1175,7 +1175,7 @@ python -m pytest tests/unit/test_strategies.py -v
 ```
 预期输出：FAIL — 包和类未定义。
 
-- [ ] **Step 3: 实现策略包和基类**
+- [x] **Step 3: 实现策略包和基类**
 
 创建 `src/figaroh/optimal/strategies/__init__.py`:
 
@@ -1471,7 +1471,7 @@ class SplineOptimizationStrategy(TrajectoryOptimizationStrategy):
         return wp_init, W_stack
 ```
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -1479,7 +1479,7 @@ python -m pytest tests/unit/test_strategies.py -v
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/optimal/strategies/ tests/unit/test_strategies.py
@@ -1498,7 +1498,7 @@ git commit -m "feat(optimal): add strategy pattern with SplineOptimizationStrate
 - Produces: `CasadiBackend.rnea_function` property → `cs.Function(q, v, a) -> tau`
 - 缓存指纹使用 SHA256 全惯性参数哈希
 
-- [ ] **Step 1: 编写属性接口测试**
+- [x] **Step 1: 编写属性接口测试**
 
 将以下测试追加到 `tests/unit/test_backend.py`（在 `TestCasadiBackend` 类内）：
 
@@ -1562,7 +1562,7 @@ class TestCasadiBackendProperties:
         assert len(key1) > len("test_robot_")
 ```
 
-- [ ] **Step 2: 运行测试检查失败**
+- [x] **Step 2: 运行测试检查失败**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -1570,7 +1570,7 @@ python -m pytest tests/unit/test_backend.py::TestCasadiBackendProperties -v
 ```
 预期输出：FAIL — `regressor_function` 和 `rnea_function` 属性未定义。
 
-- [ ] **Step 3: 扩展 CasadiBackend — 添加属性 + 缓存优化**
+- [x] **Step 3: 扩展 CasadiBackend — 添加属性 + 缓存优化**
 
 修改 `src/figaroh/backend/casadi.py`，在 `CasadiBackend` 类中添加或替换以下内容：
 
@@ -1643,7 +1643,7 @@ self._rnea_fun = cs.Function("rnea", [cs_q, cs_v, cs_a], [tau_expr])
 
 在缓存保存逻辑中也保存 `_rnea_fun`（可选，首次构建后缓存）。
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -1651,7 +1651,7 @@ python -m pytest tests/unit/test_backend.py::TestCasadiBackendProperties -v
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/backend/casadi.py tests/unit/test_backend.py
@@ -1670,7 +1670,7 @@ git commit -m "feat(backend): add regressor_function and rnea_function propertie
 - Consumes: `TrajectoryOptimizationStrategy` ABC; `CasadiBackend` properties; `FourierTrajectory`; `BaseParameterComputer`
 - Produces: `FourierOptimizationStrategy` — 全符号 CasADi NLP 管线
 
-- [ ] **Step 1: 编写 FourierStrategy 初始化测试**
+- [x] **Step 1: 编写 FourierStrategy 初始化测试**
 
 创建 `tests/unit/test_fourier_strategy.py`:
 
@@ -1794,7 +1794,7 @@ class TestFourierStrategySolveFlow:
         assert 'T_F' in mock_ctx.results
 ```
 
-- [ ] **Step 2: 运行测试检查失败**
+- [x] **Step 2: 运行测试检查失败**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -1802,7 +1802,7 @@ python -m pytest tests/unit/test_fourier_strategy.py -v
 ```
 预期输出：FAIL — `FourierOptimizationStrategy` 未定义。
 
-- [ ] **Step 3: 实现 FourierOptimizationStrategy（核心管线）**
+- [x] **Step 3: 实现 FourierOptimizationStrategy（核心管线）**
 
 创建 `src/figaroh/optimal/strategies/fourier_strategy.py`:
 
@@ -2209,7 +2209,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         return x0
 ```
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -2217,7 +2217,7 @@ python -m pytest tests/unit/test_fourier_strategy.py -v
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/figaroh/optimal/strategies/fourier_strategy.py tests/unit/test_fourier_strategy.py
@@ -2232,7 +2232,7 @@ git commit -m "feat(optimal): implement FourierOptimizationStrategy with full Ca
 - Modify: `src/figaroh/optimal/base_optimal_trajectory.py`
 - Modify: `tests/unit/test_backend.py`（追加集成测试）
 
-- [ ] **Step 1: 编写集成测试**
+- [x] **Step 1: 编写集成测试**
 
 追加到 `tests/unit/test_backend.py`：
 
@@ -2371,7 +2371,7 @@ class TestTrajectoryStrategyIntegration:
             assert expected_keys.issubset(traj.results.keys())
 ```
 
-- [ ] **Step 2: 修改 BaseOptimalTrajectory**
+- [x] **Step 2: 修改 BaseOptimalTrajectory**
 
 修改 `src/figaroh/optimal/base_optimal_trajectory.py`：
 
@@ -2437,7 +2437,7 @@ def solve(self, stack_reps: int = 2) -> Dict[str, Any]:
 
 保留 `_find_latest_pkl()` 和 `_load_results_from_pkl()` 静态方法 — 它们被 `plot_results()` 使用。
 
-- [ ] **Step 3: 运行测试验证通过**
+- [x] **Step 3: 运行测试验证通过**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -2445,7 +2445,7 @@ python -m pytest tests/unit/test_backend.py::TestTrajectoryStrategyIntegration -
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add src/figaroh/optimal/base_optimal_trajectory.py tests/unit/test_backend.py
@@ -2463,7 +2463,7 @@ git commit -m "feat(optimal): integrate strategy pattern into BaseOptimalTraject
 **Interfaces:**
 - Produces: `TrajectoryConstraintManager.build_symbolic_constraints()` 方法
 
-- [ ] **Step 1: 在 contraints.py 中新增符号约束方法**
+- [x] **Step 1: 在 contraints.py 中新增符号约束方法**
 
 在 `src/figaroh/optimal/contraints.py` 中，为 `TrajectoryConstraintManager` 添加新方法：
 
@@ -2518,7 +2518,7 @@ def build_symbolic_constraints(self, Q_sym, V_sym, A_sym, t_sym, cmodel):
     return cons_expr, np.array(cl, dtype=float), np.array(cu, dtype=float)
 ```
 
-- [ ] **Step 2: 清理 CasadiBackend 中的旧回调辅助函数**
+- [x] **Step 2: 清理 CasadiBackend 中的旧回调辅助函数**
 
 在 `src/figaroh/backend/casadi.py` 末尾，移除以下函数（它们存在于 `base_optimal_trajectory.py` 的末尾，不属于 `casadi.py`）：
 
@@ -2536,7 +2536,7 @@ def build_symbolic_constraints(self, Q_sym, V_sym, A_sym, t_sym, cmodel):
 
 将 `_solve_with_casadi_backend` 方法标记为已弃用或在 SplineStrategy 中使用。
 
-- [ ] **Step 3: 运行测试确保未破坏现有代码**
+- [x] **Step 3: 运行测试确保未破坏现有代码**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -2545,7 +2545,7 @@ python -m pytest tests/unit/test_config.py -v
 ```
 预期输出：所有现存测试 PASS。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add src/figaroh/optimal/contraints.py src/figaroh/backend/casadi.py
@@ -2560,7 +2560,7 @@ git commit -m "refactor: add symbolic constraint builder and clean up old Callba
 - Create: `tests/unit/test_fourier_strategy.py`（追加 D-optimal 和 Cholesky 测试）
 - Create: `tests/unit/test_fourier_trajectory.py`（追加有限差分对照测试）
 
-- [ ] **Step 1: 编写 D-optimal 目标单元测试**
+- [x] **Step 1: 编写 D-optimal 目标单元测试**
 
 追加到 `tests/unit/test_fourier_strategy.py`：
 
@@ -2666,7 +2666,7 @@ class TestFrictionModelDifferentiability:
         assert np.isfinite(grad_val)
 ```
 
-- [ ] **Step 2: 编写符号雅可比 vs 有限差分对照测试**
+- [x] **Step 2: 编写符号雅可比 vs 有限差分对照测试**
 
 ```python
 class TestSymbolicJacobian:
@@ -2715,7 +2715,7 @@ class TestSymbolicJacobian:
         np.testing.assert_allclose(J_sym_val, J_fd, atol=1e-4)
 ```
 
-- [ ] **Step 3: 运行验证测试**
+- [x] **Step 3: 运行验证测试**
 
 ```bash
 cd /home/tyche/Documents/figaroh-plus
@@ -2725,7 +2725,7 @@ python -m pytest tests/unit/test_fourier_strategy.py::TestSymbolicJacobian -v
 ```
 预期输出：所有测试 PASS。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add tests/unit/test_fourier_strategy.py tests/unit/test_fourier_trajectory.py
@@ -2742,7 +2742,7 @@ git commit -m "test: add D-optimal, friction model, and symbolic Jacobian tests"
 
 **Note:** 依据 `task.md` 第 11 组的要求，编写以下文档：
 
-- [ ] **Step 1: 在 README 或 docs/ 中添加傅里叶轨迹配置文档**
+- [x] **Step 1: 在 README 或 docs/ 中添加傅里叶轨迹配置文档**
 
 傅里叶激励轨迹配置示例（追加到 README 或创建 `docs/fourier_trajectory.md`）：
 
@@ -2804,7 +2804,7 @@ print(f"Condition number: {cond:.2f}")
 5. 基参数计算与轨迹类型无关，沿用现有的 `BaseParameterComputer`
 ```
 
-- [ ] **Step 2: 更新 environment_setup 或 README**
+- [x] **Step 2: 更新 environment_setup 或 README**
 
 在 README 中添加环境要求说明：
 
@@ -2826,7 +2826,7 @@ python scripts/check_env.py
 ```
 ```
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add docs/fourier_trajectory.md README.md
