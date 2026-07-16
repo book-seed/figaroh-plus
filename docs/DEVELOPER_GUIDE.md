@@ -291,9 +291,29 @@ print(f"CasADi: {time.perf_counter()-t0:.1f}s, success={result is not None}")
 
 ---
 
-## 7. Configuration Reference
+## 7. Fourier Trajectory Optimization
 
-### 7.1 Unified YAML Format (recommended)
+FIGAROH v0.4.3+ 新增**傅里叶级数激励轨迹**优化，作为三次样条的替代方案。使用全符号化 CasADi NLP 管线 + D-最优目标函数，条件数通常比样条低 15-30%。
+
+- 配置、运行、故障排查等完整指南：**[docs/fourier_trajectory_guide.md](fourier_trajectory_guide.md)**
+- 快速配置示例：
+
+```yaml
+optimal_trajectory:
+  trajectory:
+    type: "fourier"
+    fourier:
+      n_harmonics: 5
+      n_samples: 200
+```
+
+> 傅里叶优化需要 CasADi backend（`backend: "casadi"`）和 pinocchio.casadi 绑定。
+
+---
+
+## 8. Configuration Reference
+
+### 11.1 Unified YAML Format (recommended)
 
 ```yaml
 robot:
@@ -334,7 +354,7 @@ output:
   directory: results/
 ```
 
-### 7.2 Key Parameters
+### 11.2 Key Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -349,7 +369,7 @@ output:
 | `has_actuator_inertia` | `false` | Include actuator inertia parameters |
 | `has_joint_offset` | `false` | Include joint offset parameters |
 
-### 7.3 CasADi Solver Options
+### 11.3 CasADi Solver Options
 
 The CasADi backend maps `IPOPTConfig` options to `cs.nlpsol` options
 automatically:
@@ -367,7 +387,7 @@ automatically:
 
 ---
 
-## 8. CasADi Function Caching
+## 9. CasADi Function Caching
 
 The CasADi backend caches compiled symbolic Functions in
 `~/.figaroh/casadi_cache/` to avoid rebuilding the regressor graph on
@@ -391,7 +411,7 @@ rm -rf ~/.figaroh/casadi_cache/
 
 ---
 
-## 9. Architecture Insight: Regressor as Jacobian
+## 10. Architecture Insight: Regressor as Jacobian
 
 The regressor matrix **H** is mathematically the **Jacobian of inverse
 dynamics w.r.t. the inertial parameter vector**:
@@ -426,9 +446,9 @@ pivoting), which is wrapped as a numpy Callback.
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
-### 8.1 `ImportError: CasADi backend requires conda-forge pinocchio`
+### 11.1 `ImportError: CasADi backend requires conda-forge pinocchio`
 
 **Cause**: You installed `pin` from PyPI (`pip install pin`), which lacks
 compiled CasADi bindings.
@@ -442,7 +462,7 @@ pixi add --feature casadi casadi pinocchio
 conda install -c conda-forge casadi pinocchio
 ```
 
-### 8.2 `ModuleNotFoundError: No module named 'pinocchio.casadi'`
+### 11.2 `ModuleNotFoundError: No module named 'pinocchio.casadi'`
 
 **Cause**: conda-forge pinocchio is installed but its version doesn't
 include CasADi support (pinocchio < 4.0).
@@ -453,7 +473,7 @@ include CasADi support (pinocchio < 4.0).
 conda install -c conda-forge "pinocchio>=4.0"
 ```
 
-### 8.3 `EXIT: Converged to a point of local infeasibility`
+### 11.3 `EXIT: Converged to a point of local infeasibility`
 
 **Cause**: The random feasible-initial-trajectory search exhausted all
 attempts without finding a valid starting point.
@@ -465,13 +485,13 @@ attempts without finding a valid starting point.
 3. Increase max attempts: set `max_attempts: 2000`
 4. Relax soft limits: set `soft_lim: 0.1`
 
-### 8.4 Numerical path is faster than CasADi
+### 11.4 Numerical path is faster than CasADi
 
 For problems with **very few variables** (< 10), the CasADi NLP construction
 overhead (~35 s) may outweigh the per-iteration speedup.  CasADi's advantage
 grows with problem size — expect 3–10× speedup for 30+ variable problems.
 
-### 8.5 `Assertion 'has_derivative()' failed`
+### 11.5 `Assertion 'has_derivative()' failed`
 
 **Cause**: A `cs.Callback` was constructed without `{"enable_fd": True}`.
 
@@ -480,9 +500,9 @@ grows with problem size — expect 3–10× speedup for 30+ variable problems.
 
 ---
 
-## 11. API Reference
+## 12. API Reference
 
-### 9.1 `figaroh.backend`
+### 12.1 `figaroh.backend`
 
 ```python
 from figaroh.backend import Backend, create_backend, NumericalBackend, CasadiBackend
@@ -505,7 +525,7 @@ Factory function.  Accepts:
 - Duck-typed object with `.name` attribute → passthrough
 - Unknown string → `ValueError`
 
-### 9.2 `BaseOptimalTrajectory`
+### 12.2 `BaseOptimalTrajectory`
 
 ```python
 BaseOptimalTrajectory(
@@ -524,9 +544,9 @@ Key methods:
 
 ---
 
-## 12. Development Workflow
+## 13. Development Workflow
 
-### 10.1 Environment Setup
+### 13.1 Environment Setup
 
 ```bash
 # Clone with submodules
@@ -544,7 +564,7 @@ pixi run test
 pixi run lint
 ```
 
-### 10.2 Making Changes
+### 13.2 Making Changes
 
 1. Create a feature branch: `git checkout -b feature/my-change`
 2. Run tests before modifying: `pixi run test`
@@ -552,7 +572,7 @@ pixi run lint
 4. Run full test suite: `pixi run test`
 5. Run UR10 benchmark if backend code changed: `python scripts/ur10_benchmark.py`
 
-### 10.3 Adding a New Backend
+### 13.3 Adding a New Backend
 
 1. Subclass `Backend` in a new file under `src/figaroh/backend/`
 2. Implement all 5 abstract methods (`build_regressor`, `create_solver`, `name`)
