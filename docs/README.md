@@ -1,65 +1,23 @@
-# figaroh Documentation
+# FIGAROH Documentation
 
-## Building and Viewing Documentation
+## 指南文档
 
-1. Install Sphinx and theme:
-```bash
-pip install sphinx sphinx-rtd-theme
-```
+| 文档 | 内容 |
+|------|------|
+| [developer-guide.md](developer-guide.md) | 开发者总入口：安装、架构、配置、API |
+| [fourier-optimal-trajectory.md](fourier-optimal-trajectory.md) | 傅里叶激励轨迹优化：环境搭建、配置、运行、排错 |
+| [architecture.md](architecture.md) | 全项目类关系 + 架构文档 |
 
-2. Build HTML docs:
-```bash
-cd docs
-make html
-```
-
-3. View documentation locally using one of these methods:
-
-a. Using Python's built-in HTTP server:
-```bash
-cd build/html
-python -m http.server 8000
-```
-Then open http://localhost:8000 in your browser
-
-b. Using PHP's built-in server:
-```bash 
-cd build/html
-php -S localhost:8000
-```
-
-c. Direct file access:
-- Open `build/html/index.html` in your web browser
-- Navigate using the sidebar menu
-
-## Development
-
-To auto-rebuild documentation when files change:
+## 构建和查看 Sphinx 文档
 
 ```bash
-sphinx-autobuild source build/html
+pixi run python -m pip install sphinx sphinx-rtd-theme
+cd docs && make html
 ```
 
-This will start a server at http://localhost:8000 and rebuild docs when source files change.
+本地查看：
 
-## Deployment 
-
-To deploy to GitHub Pages:
-
-1. Build documentation:
 ```bash
-make html
-```
-
-2. Copy contents of `build/html` to your gh-pages branch
-```bash
-cp -r build/html/* /path/to/gh-pages/
-```
-
-3. Push to GitHub:
-```bash 
-cd /path/to/gh-pages
-git add .
-git commit -m "Update documentation"
-git push origin gh-pages
+cd build/html && python -m http.server 8000
+# 浏览器打开 http://localhost:8000
 ```

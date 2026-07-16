@@ -295,7 +295,7 @@ print(f"CasADi: {time.perf_counter()-t0:.1f}s, success={result is not None}")
 
 FIGAROH v0.4.3+ 新增**傅里叶级数激励轨迹**优化，作为三次样条的替代方案。使用全符号化 CasADi NLP 管线 + D-最优目标函数，条件数通常比样条低 15-30%。
 
-- 配置、运行、故障排查等完整指南：**[docs/fourier_trajectory_guide.md](fourier_trajectory_guide.md)**
+- 配置、运行、故障排查等完整指南：**[fourier-optimal-trajectory.md](fourier-optimal-trajectory.md)**
 - 快速配置示例：
 
 ```yaml
