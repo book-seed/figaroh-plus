@@ -130,19 +130,21 @@ conda-forge 的二进制包通常包含 OpenMP。如果验证失败：
 - 检查是否安装了正确 channel 的 CasADi：`pixi run python -c "import casadi; print(casadi.__file__)"`，确认路径在 `.pixi/envs/` 下
 - 如果确认 conda-forge 当前版本确实无 OpenMP，参照 aarch64 步骤源码编译
 
-### 2.6（可选）安装 HSL 线性求解器
+### 2.6 IPOPT 线性求解器
+
+IPOPT 默认使用内置 MUMPS 求解器，全平台可用。HSL（`ma57`）可加速大变量优化，但仅 x86_64 平台的 conda-forge 提供 `coinhsl` 包：
 
 ```bash
+# x86_64 only — 安装 HSL 加速
 pixi add coinhsl
 ```
 
-不安装时 IPOPT 回退 MUMPS 求解器，功能完整但 2-4× 慢。
+aarch64 平台（Jetson / ARM 服务器）无 `coinhsl` 包，使用 MUMPS 即可，功能完整。
 
-### 2.7 配置 HSL 加速参数
-
-在 `fourier_strategy.py` 的 `opts` 中设置 `"ipopt.linear_solver": "ma57"`。若运行时抛出异常，检查 `libhsl.so` 是否被正确加载；若无法加载，IPOPT 会自动回退 `mumps`，日志中会给出提示。
-
-> **若要覆盖求解器选择**，可在 `fourier_strategy.py` 的 `opts` 中修改 `ipopt.linear_solver` 的值（如 `"mumps"`、`"ma27"` 等），所有选项均为 CasADi IPOPT 的标准扩展。
+如需切换求解器，在 `fourier_strategy.py` 的 `opts` 中修改：
+```python
+opts["ipopt.linear_solver"] = "mumps"  # 或 "ma57"（需 HSL）
+```
 
 ---
 
