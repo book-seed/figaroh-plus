@@ -56,7 +56,8 @@ def check_casadi_ipopt() -> bool:
         )
     try:
         x = cs.SX.sym("x")
-        cs.nlpsol("_", "ipopt", {"x": x, "f": x ** 2})
+        cs.nlpsol("check", "ipopt", {"x": x, "f": x ** 2},
+                  {"ipopt.print_level": 0, "print_time": False})
         return _check(True, "casadi.nlpsol('ipopt') 可用")
     except Exception:
         return _check(
@@ -70,7 +71,7 @@ def check_casadi_openmp() -> bool:
     try:
         import casadi as cs
         x = cs.SX.sym("x")
-        f = cs.Function("_", [x], [x ** 2])
+        f = cs.Function("f", [x], [x ** 2])
         f.map(2, "openmp")
         return _check(True, "CasADi OpenMP 支持")
     except Exception:

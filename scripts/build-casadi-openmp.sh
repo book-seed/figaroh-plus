@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Check if CasADi+OpenMP already installed
-if python -c "import casadi; casadi.Function('_',[casadi.SX.sym('x')],[0]).map(2,'openmp'); raise SystemExit(0)" 2>/dev/null; then
+if python -c "import casadi; casadi.Function('f',[casadi.SX.sym('x')],[0]).map(2,'openmp'); raise SystemExit(0)" 2>/dev/null; then
     echo "CasADi+OpenMP already installed, skipping build."
     exit 0
 fi
