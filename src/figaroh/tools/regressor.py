@@ -101,6 +101,7 @@ class RegressorBuilder:
 
     def _fill_joint_regressor_sample(self, W, W_temp, V, A, sample_idx, N, identif_config=None):
         """Fill regressor for one sample in joint torque mode."""
+        W_temp = np.atleast_2d(W_temp)
         for j in range(W_temp.shape[0]):
             base_idx = j * N + sample_idx
             W[base_idx, :10 * self.nv] = W_temp[j, :]
