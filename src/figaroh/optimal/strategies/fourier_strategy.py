@@ -246,10 +246,12 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         # ── 11. NLP definition ────────────────────────────────────
         nlp = {"x": Z, "f": obj, "g": cons}
 
-        # ── 12. Solver options ────────────────────────────────────
+        # ── 12. Solver options (MUMPS-optimized) ────────────────────
         opts = {
             "ipopt.linear_solver": "mumps",
-            "ipopt.tol": 1e-6,
+            "ipopt.hessian_approximation": "limited-memory",
+            "ipopt.tol": 1e-4,
+            "ipopt.acceptable_tol": 1e-3,
             "ipopt.max_iter": 500,
             "ipopt.mu_strategy": "adaptive",
             "ipopt.print_level": 3,
