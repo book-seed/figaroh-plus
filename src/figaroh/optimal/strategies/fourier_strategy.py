@@ -99,8 +99,8 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         # ── 3. Time vector ─────────────────────────────────────────
         T = 2 * np.pi
         omega = freq if freq is not None else 1.0
-        t_vec = cs.MX.linspace(0, T, n_samples)
-        t_vec = t_vec.T  # (1, n_samples)
+        t_np = np.linspace(0, T, n_samples)
+        t_vec = cs.MX(t_np).T  # (1, n_samples)
 
         # ── 4. Column-major trajectory construction ────────────────
         # Q_col[j, i] = q_j(t_i): shape (n_act, n_samples) -- NO TRANSPOSE
