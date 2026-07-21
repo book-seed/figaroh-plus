@@ -65,7 +65,7 @@ PyPI and conda-forge dependencies in a single lock file.
 git clone https://github.com/your-org/figaroh-plus.git
 cd figaroh-plus
 pixi install                    # base environment (numerical backend)
-pixi run install-casadi           # add CasADi backend + OpenMP
+pixi install -e casadi && pixi run -e casadi build-casadi-openmp           # add CasADi backend + OpenMP
 ```
 
 Verify:

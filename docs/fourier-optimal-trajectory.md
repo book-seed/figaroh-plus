@@ -78,7 +78,7 @@ source ~/.bashrc
 pixi install
 
 # 创建 CasADi 环境并源码编译 OpenMP（首次约 15-30 分钟）
-pixi run install-casadi
+pixi install -e casadi && pixi run -e casadi build-casadi-openmp
 ```
 
 > `install-casadi` 内部执行 `pixi install -e casadi` + 源码编译 CasADi+OpenMP。幂等——已安装时跳过编译。
@@ -398,7 +398,7 @@ pixi install -e casadi
 
 ### 8.1 平台兼容性
 
-全平台均通过源码编译安装 CasADi+OpenMP，`pixi run install-casadi` 统一处理。
+全平台均通过源码编译安装 CasADi+OpenMP，`pixi install -e casadi && pixi run -e casadi build-casadi-openmp` 统一处理。
 
 ### 8.2 性能建议
 
@@ -431,7 +431,7 @@ pixi install -e casadi
 pixi run python scripts/check_env.py
 
 # CasADi+OpenMP 环境搭建（首次，全平台）
-pixi run install-casadi
+pixi install -e casadi && pixi run -e casadi build-casadi-openmp
 
 # 全部单元测试
 pixi run python -m pytest tests/unit/ -q --ignore=tests/unit/test_robotvisualization.py
