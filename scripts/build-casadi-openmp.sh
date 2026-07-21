@@ -16,21 +16,29 @@ BUILD=/tmp/casadi-build
 
 # ── Download source ────────────────────────────────────────
 echo "Downloading CasADi ${V}..."
-if ! curl -L --retry 3 -o /tmp/casadi.tar.gz \
+# Try GitHub first, fallback to PyPI
+if curl -L --retry 3 -o /tmp/casadi.tar.gz \
     "https://github.com/casadi/casadi/archive/refs/tags/${V}.tar.gz"; then
+    echo "GitHub OK, extracting..."
+    tar xzf /tmp/casadi.tar.gz -C /tmp/
+    rm -f /tmp/casadi.tar.gz
+else
     echo "GitHub failed, trying PyPI..."
     python -m pip download --no-binary casadi "casadi==${V}" -d /tmp/cd
     tar xzf "/tmp/cd/casadi-${V}.tar.gz" -C /tmp/
-    rm -rf "${SRC}"
-    mv "/tmp/casadi-${V}" "${SRC}"
-    rm -rf /tmp/cd /tmp/casadi.tar.gz
+    rm -rf /tmp/cd
 fi
 
+# GitHub creates casadi-X.Y.Z, PyPI creates casadi-X.Y.Z — same name
 if [ ! -d "${SRC}" ]; then
-    tar xzf /tmp/casadi.tar.gz -C /tmp/
-    rm -rf "${SRC}"
-    mv "/tmp/casadi-${V}" "${SRC}"
-    rm -f /tmp/casadi.tar.gz
+    # Find actual extracted directory (handle naming variants)
+    EXTRACTED=$(ls -d /tmp/casadi-* 2>/dev/null | head -1)
+    if [ -n "${EXTRACTED}" ] && [ -d "${EXTRACTED}" ]; then
+        mv "${EXTRACTED}" "${SRC}"
+    else
+        echo "ERROR: cannot find extracted CasADi source in /tmp/"
+        exit 1
+    fi
 fi
 
 # ── Build ───────────────────────────────────────────────────
