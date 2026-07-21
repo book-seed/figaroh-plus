@@ -122,12 +122,12 @@ docs.cmd = "cd docs && make html"
 # Idempotent — if already built, skips compilation.
 #
 # For end users:
-#   pixi run setup-casadi
+#   pixi run install-casadi
 #
 # Or step-by-step:
 #   pixi install -e casadi
 #   pixi run -e casadi build-casadi-openmp
-setup-casadi = "pixi install -e casadi && pixi run -e casadi build-casadi-openmp"
+install-casadi = "pixi install -e casadi && pixi run -e casadi build-casadi-openmp"
 # Self-contained CasADi+OpenMP source build with GitHub→PyPI download fallback.
 # Checks for existing OpenMP build first — if already installed, exits immediately.
 build-casadi-openmp = { cmd = "python -c \"import casadi; casadi.Function('_',[casadi.SX.sym('x')],[0]).map(2,'openmp'); raise SystemExit(0)\" 2>/dev/null && echo 'CasADi+OpenMP already installed.' && exit 0; V=3.7.2; S=/tmp/casadi-${V}; B=/tmp/casadi-build; echo 'Downloading CasADi ${V}...'; curl -L --retry 3 -o /tmp/casadi.tar.gz https://github.com/casadi/casadi/archive/refs/tags/${V}.tar.gz || { echo 'GitHub failed, trying PyPI...'; python -m pip download --no-binary casadi casadi==${V} -d /tmp/cd; tar xzf /tmp/cd/casadi-${V}.tar.gz -C /tmp/; rm -rf ${S}; mv /tmp/casadi-${V} ${S}; rm -rf /tmp/cd /tmp/casadi.tar.gz; }; if [ ! -d ${S} ]; then tar xzf /tmp/casadi.tar.gz -C /tmp/; rm -rf ${S}; mv /tmp/casadi-${V} ${S}; rm -f /tmp/casadi.tar.gz; fi; echo 'Building CasADi with OpenMP...'; cmake -S ${S} -B ${B} -DWITH_OPENMP=ON -DWITH_IPOPT=ON -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -DIPOPT_INCLUDE_DIRS=$CONDA_PREFIX/include/coin-or -DIPOPT_LIBRARIES=$CONDA_PREFIX/lib/libipopt.so && cmake --build ${B} --parallel $(nproc) && cmake --install ${B} && echo 'CasADi+OpenMP build complete.'" }
