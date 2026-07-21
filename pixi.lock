@@ -7716,7 +7716,6 @@ packages:
   requires_dist:
   - numpy
   - scipy
-  - pin
   - matplotlib
   - pyyaml
   - meshcat
