@@ -10,6 +10,13 @@
 """
 
 import sys
+import warnings
+
+# Suppress known pinocchio deprecation warning (upstream issue, harmless)
+warnings.filterwarnings(
+    "ignore",
+    message="to-Python converter.*already registered",
+)
 
 
 def _check(ok: bool, name: str, hint: str = "") -> bool:
