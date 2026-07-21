@@ -81,8 +81,6 @@ pixi install
 pixi install -e casadi && pixi run -e casadi build-casadi-openmp
 ```
 
-> `install-casadi` 内部执行 `pixi install -e casadi` + 源码编译 CasADi+OpenMP。幂等——已安装时跳过编译。
-
 ### 2.3 验证
 
 ```bash
