@@ -8,12 +8,11 @@
 
 1. [架构简介](#1-架构简介)
 2. [环境搭建](#2-环境搭建)
-3. [验证环境](#3-验证环境)
-4. [配置参数](#4-配置参数)
-5. [运行优化](#5-运行优化)
-6. [结果与对比](#6-结果与对比)
-7. [故障排查](#7-故障排查)
-8. [注意事项](#8-注意事项)
+3. [配置参数](#3-配置参数)
+4. [运行优化](#4-运行优化)
+5. [结果与对比](#5-结果与对比)
+6. [故障排查](#6-故障排查)
+7. [注意事项](#7-注意事项)
 
 ---
 
@@ -81,20 +80,27 @@ pixi install
 pixi install -e casadi && pixi run -e casadi build-casadi-openmp
 ```
 
-### 2.3 验证
+### 2.3 验证环境
 
 ```bash
-pixi run python -c "import pinocchio; print('pinocchio:', pinocchio.__version__)"
-pixi run python -c "import pinocchio.casadi; print('pinocchio.casadi: OK')"
-pixi run python -c "
-import casadi as cs
-x = cs.SX.sym('x')
-cs.Function('f',[x],[x**2]).map(2,'openmp')
-print('CasADi+OpenMP: OK')
-"
+pixi run python scripts/check_env.py
 ```
 
-三行均应输出 OK，无 WARNING。
+预期输出：
+
+```
+  FIGAROH 环境验证
+  ==================================================
+  [依赖]
+  [PASS] pinocchio (v4.0.0)
+  [PASS] pinocchio.casadi
+  [PASS] CasADi + IPOPT
+  [PASS] CasADi OpenMP
+
+  结果: 4/4 通过
+```
+
+一键完成 pinocchio / pinocchio.casadi / CasADi+IPOPT / OpenMP 四项检查。失败时输出具体修复命令。
 
 ### 2.4 IPOPT 线性求解器
 
@@ -105,41 +111,7 @@ opts["ipopt.linear_solver"] = "mumps"  # 默认
 
 ---
 
-## 3. 验证环境（可选）
-
-### 3.1 环境验证脚本
-
-```bash
-pixi run python scripts/check_env.py
-```
-
-预期输出：
-
-```
-  FIGAROH 环境验证脚本
-  ==============================
-  [PASS] CasADi 包 + IPOPT 求解器
-  [PASS] CasADi IPOPT 可用
-  [PASS] CasADi OpenMP map
-  [PASS] pinocchio 包
-  [PASS] pinocchio.casadi 绑定
-
-  结果: 5/5 通过
-```
-
-### 3.2 单元测试
-
-```bash
-pixi run python -m pytest tests/unit/ \
-  --ignore=tests/unit/test_robotvisualization.py \
-  -q
-```
-
-预期：252+ 通过，0 失败。`test_robotvisualization.py` 有预存兼容性问题，可安全忽略。
-
----
-
-## 4. 配置参数
+## 3. 配置参数
 
 配置文件位于 `figaroh-examples/examples/<robot>/config/`，以 UR10 为例：
 
@@ -200,9 +172,9 @@ print('fourier_config:', json.dumps(traj_cfg.get('fourier_config', {}), indent=2
 
 ---
 
-## 5. 运行优化
+## 4. 运行优化
 
-### 5.1 命令行
+### 4.1 命令行
 
 ```bash
 cd figaroh-examples/examples/ur10/
@@ -213,7 +185,7 @@ pixi run python optimal_trajectory.py \
   --model ../../models
 ```
 
-### 5.2 Python API
+### 4.2 Python API
 
 ```python
 from figaroh.optimal.base_optimal_trajectory import BaseOptimalTrajectory
@@ -225,7 +197,7 @@ traj.save_results()
 traj.plot_results()
 ```
 
-### 5.3 求解后验证条件数
+### 4.3 求解后验证条件数
 
 ```python
 import numpy as np
@@ -240,7 +212,7 @@ cond = np.linalg.cond(W_b)
 print(f"Condition number: {cond:.2f}")
 ```
 
-### 5.4 预期输出
+### 4.4 预期输出
 
 ```
 [INFO] Trajectory optimization strategy: fourier
@@ -254,7 +226,7 @@ This program contains Ipopt, a library for large-scale nonlinear optimization.
 [INFO] Fourier trajectory optimization completed
 ```
 
-### 5.5 运行单元测试
+### 4.5 运行单元测试
 
 ```bash
 # 快速（跳过 slow E2E 测试）
@@ -274,9 +246,9 @@ pixi run python -m pytest tests/unit/ -q \
 
 ---
 
-## 6. 结果与对比
+## 5. 结果与对比
 
-### 6.1 输出文件
+### 5.1 输出文件
 
 ```
 results/
@@ -284,7 +256,7 @@ results/
 └── ur10_optimal_trajectory_YYYYMMDD_HHMMSS.yaml    # 可读副本
 ```
 
-### 6.2 结果解读
+### 5.2 结果解读
 
 ```yaml
 trajectory_segments: 1
@@ -304,7 +276,7 @@ acceleration_segments: [[...]]# 关节加速度
 | 100-200 | 可接受 |
 | > 200 | 需检查配置/约束 |
 
-### 6.3 傅里叶 vs 三次样条对比
+### 5.3 傅里叶 vs 三次样条对比
 
 | 维度 | 三次样条（默认） | 傅里叶 |
 |------|-----------------|--------|
@@ -321,18 +293,18 @@ acceleration_segments: [[...]]# 关节加速度
 
 ---
 
-## 7. 故障排查
+## 6. 故障排查
 
-### 7.1 CasADi OpenMP WARNING
+### 6.1 CasADi OpenMP WARNING
 
 ```
 WARNING("CasADi was not compiled with WITH_OPENMP=ON. Falling back to serial evaluation.")
 ```
 
 **原因**：CasADi 未编译 OpenMP 支持。
-**解决**：执行 [2.5 节](#25-按平台修复-openmp) 的按平台修复步骤。
+**解决**：执行 [2.2 节](#22-安装-pixi--创建环境) 的 CasADi 源码编译步骤。
 
-### 7.2 IPOPT 不收敛
+### 6.2 IPOPT 不收敛
 
 ```
 EXIT: Maximum Number of Iterations Exceeded.
@@ -344,7 +316,7 @@ EXIT: Maximum Number of Iterations Exceeded.
 3. 确认 `fourier_frequency` 与轨迹时长匹配
 4. 增大 `max_iter`（500 → 1000）
 
-### 7.3 Restoration Phase Failed
+### 6.3 Restoration Phase Failed
 
 IPOPT 试探步无法满足约束。
 
@@ -353,7 +325,7 @@ IPOPT 试探步无法满足约束。
 2. 增大 `soft_lim` 安全裕度
 3. 减少 `n_samples`（200 → 100）
 
-### 7.4 pinocchio.casadi 导入失败
+### 6.4 pinocchio.casadi 导入失败
 
 ```
 ImportError: No module named 'pinocchio.casadi'
@@ -369,7 +341,7 @@ pixi run python -c "import pinocchio; print(pinocchio.__file__)"
 # 如果路径含 "pin/"，需卸载 PyPI pin 并安装 conda-forge pinocchio
 ```
 
-### 7.5 CasADi backend 不可用
+### 6.5 CasADi backend 不可用
 
 ```
 ImportError: CasADi backend requires conda-forge pinocchio with CasADi bindings
@@ -380,7 +352,7 @@ ImportError: CasADi backend requires conda-forge pinocchio with CasADi bindings
 pixi install -e casadi
 ```
 
-### 7.6 环境重置
+### 6.6 环境重置
 
 ```bash
 pixi clean cache
@@ -392,13 +364,13 @@ pixi install -e casadi
 
 ---
 
-## 8. 注意事项
+## 7. 注意事项
 
-### 8.1 平台兼容性
+### 7.1 平台兼容性
 
 全平台均通过源码编译安装 CasADi+OpenMP，`pixi install -e casadi && pixi run -e casadi build-casadi-openmp` 统一处理。
 
-### 8.2 性能建议
+### 7.2 性能建议
 
 | 机器人规模 | n_harmonics | n_samples | 预计耗时 |
 |-----------|-------------|-----------|---------|
@@ -406,14 +378,14 @@ pixi install -e casadi
 | 4-7 DOF | 5 | 200 | 5-15 分钟 |
 | 7+ DOF | 先 3 后 5 | 200 | 15-30 分钟 |
 
-### 8.3 已知限制
+### 7.3 已知限制
 
 - **单段设计**：不支持多段堆叠 `stack_reps`
 - **摩擦力名义值**：优化阶段使用 `fv_nominal`/`fs_nominal`，精确值在辨识阶段获得
 - **碰撞检测**：傅里叶路径尚未集成（样条路径已支持）
 - **`CubicSpline` 适配器**：`compute_torques` 和 `check_constraints` 的 `robot` 参数为兼容性保留（使用实例自身限位数据）
 
-### 8.4 扩展预留
+### 7.4 扩展预留
 
 策略模式架构支持添加新轨迹类型：
 - 实现 `TrajectoryOptimizationStrategy` 子类
