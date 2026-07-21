@@ -248,7 +248,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
 
         # ── 12. Solver options ────────────────────────────────────
         opts = {
-            "ipopt.linear_solver": "ma57",
+            "ipopt.linear_solver": "mumps",
             "ipopt.tol": 1e-6,
             "ipopt.max_iter": 500,
             "ipopt.mu_strategy": "adaptive",
@@ -256,15 +256,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
             "print_time": False,
         }
 
-        # Check HSL availability -- fallback to mumps
-        try:
-            solver = cs.nlpsol("fourier_opt", "ipopt", nlp, opts)
-        except Exception:
-            self.logger.warning(
-                "HSL ma57 not available, falling back to mumps"
-            )
-            opts["ipopt.linear_solver"] = "mumps"
-            solver = cs.nlpsol("fourier_opt", "ipopt", nlp, opts)
+        solver = cs.nlpsol("fourier_opt", "ipopt", nlp, opts)
 
         # ── 13. Coefficient initialization ─────────────────────────
         x0 = self._initialize_coefficients(context, n_act, n_harmonics)

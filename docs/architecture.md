@@ -11,7 +11,7 @@
 | 策略 | 求解器 | 轨迹参数化 |
 |------|--------|-----------|
 | `SplineOptimizationStrategy` | cyipopt（数值）或 cs.nlpsol（CasADi） | 三次样条（ndcurves） |
-| `FourierOptimizationStrategy` | cs.nlpsol（CasADi 内置 IPOPT + HSL） | 五级傅里叶级数（全符号 MX NLP） |
+| `FourierOptimizationStrategy` | cs.nlpsol（CasADi 内置 IPOPT） | 五级傅里叶级数（全符号 MX NLP） |
 
 两条路径共享 Context 容器（`BaseOptimalTrajectory`）、基参数计算（`BaseParameterComputer`）、结果保存/可视化。
 
@@ -143,7 +143,7 @@ obj = -2 Σ log(L_ii)                     ← D-最优
     │
 τ = τ_rnea + fv·V + fs·tanh(α_opt·V)     ← 力矩约束含摩擦
     │
-cs.nlpsol("ipopt", nlp)                  ← 内置 IPOPT + HSL ma57
+cs.nlpsol("ipopt", nlp)                  ← 内置 IPOPT (MUMPS)
 ```
 
 ### 关键类

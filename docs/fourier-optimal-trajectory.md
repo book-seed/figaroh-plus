@@ -41,7 +41,7 @@ L = cholesky(J + λI)                              ← SPD 保证
 obj = -2 Σ log(L_ii)                              ← D-最优目标
     │
     ▼
-cs.nlpsol("ipopt", nlp)                           ← CasADi 内置 IPOPT + HSL
+cs.nlpsol("ipopt", nlp)                           ← CasADi 内置 IPOPT (MUMPS)
 ```
 
 ### 1.2 关键设计点
@@ -132,18 +132,9 @@ conda-forge 的二进制包通常包含 OpenMP。如果验证失败：
 
 ### 2.6 IPOPT 线性求解器
 
-IPOPT 默认使用内置 MUMPS 求解器，全平台可用。HSL（`ma57`）可加速大变量优化，但仅 x86_64 平台的 conda-forge 提供 `coinhsl` 包：
-
-```bash
-# x86_64 only — 安装 HSL 加速
-pixi add coinhsl
-```
-
-aarch64 平台（Jetson / ARM 服务器）无 `coinhsl` 包，使用 MUMPS 即可，功能完整。
-
-如需切换求解器，在 `fourier_strategy.py` 的 `opts` 中修改：
+IPOPT 使用内置 MUMPS 求解器，全平台可用。如需切换：
 ```python
-opts["ipopt.linear_solver"] = "mumps"  # 或 "ma57"（需 HSL）
+opts["ipopt.linear_solver"] = "mumps"  # 默认
 ```
 
 ---
