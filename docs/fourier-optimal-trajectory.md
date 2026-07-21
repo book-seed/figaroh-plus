@@ -74,32 +74,16 @@ git submodule update --init --recursive
 curl -fsSL https://pixi.sh/install.sh | bash
 source ~/.bashrc
 
-# 创建环境（含 pinocchio、numpy、scipy 等核心依赖）
+# 创建默认环境（pinocchio、numpy、scipy 等）
 pixi install
 
-# 安装 CasADi 环境（含 casadi、pinocchio.casadi、ipopt）
-pixi install -e casadi
-```
-
-### 2.3 设置 CasADi 环境（含 OpenMP 源码编译）
-
-conda-forge 的 CasADi 二进制包**全平台均未开启 OpenMP**，本项目改为从源码编译。
-
-**一行命令完成环境安装 + 编译**（首次约 15-30 分钟，后续秒过）：
-
-```bash
+# 创建 CasADi 环境并源码编译 OpenMP（首次约 15-30 分钟）
 pixi run setup-casadi
 ```
 
-> 该命令是幂等的——已安装时自动跳过编译。
+> `setup-casadi` 内部执行 `pixi install -e casadi` + 源码编译 CasADi+OpenMP。幂等——已安装时跳过编译。
 
-如需分步操作：
-```bash
-pixi install -e casadi             # 安装 cmake/pinocchio 等依赖
-pixi run -e casadi build-casadi-openmp  # 下载源码 → 编译 → 安装
-```
-
-### 2.4 验证
+### 2.3 验证
 
 ```bash
 pixi run python -c "import pinocchio; print('pinocchio:', pinocchio.__version__)"
@@ -114,7 +98,7 @@ print('CasADi+OpenMP: OK')
 
 三行均应输出 OK，无 WARNING。
 
-### 2.6 IPOPT 线性求解器
+### 2.4 IPOPT 线性求解器
 
 IPOPT 使用内置 MUMPS 求解器，全平台可用。如需切换：
 ```python
@@ -123,7 +107,7 @@ opts["ipopt.linear_solver"] = "mumps"  # 默认
 
 ---
 
-## 3. 验证环境
+## 3. 验证环境（可选）
 
 ### 3.1 环境验证脚本
 
