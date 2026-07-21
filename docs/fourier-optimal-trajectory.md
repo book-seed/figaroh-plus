@@ -81,54 +81,38 @@ pixi install
 pixi install -e casadi
 ```
 
-### 2.3 验证核心依赖
+### 2.3 设置 CasADi 环境（含 OpenMP 源码编译）
+
+conda-forge 的 CasADi 二进制包**全平台均未开启 OpenMP**，本项目改为从源码编译。
+
+**一行命令完成环境安装 + 编译**（首次约 15-30 分钟，后续秒过）：
+
+```bash
+pixi run setup-casadi
+```
+
+> 该命令是幂等的——已安装时自动跳过编译。
+
+如需分步操作：
+```bash
+pixi install -e casadi             # 安装 cmake/pinocchio 等依赖
+pixi run -e casadi build-casadi-openmp  # 下载源码 → 编译 → 安装
+```
+
+### 2.4 验证
 
 ```bash
 pixi run python -c "import pinocchio; print('pinocchio:', pinocchio.__version__)"
-pixi run python -c "import casadi; print('CasADi:', casadi.__version__)"
 pixi run python -c "import pinocchio.casadi; print('pinocchio.casadi: OK')"
-```
-
-### 2.4 验证 OpenMP 支持
-
-CasADi 的 `map("openmp")` 需要编译时开启 OpenMP。**全平台都需要验证此步骤**：
-
-```bash
 pixi run python -c "
 import casadi as cs
 x = cs.SX.sym('x')
-f = cs.Function('f', [x], [x**2])
-f.map(10, 'openmp')
-print('OK')
+cs.Function('f',[x],[x**2]).map(2,'openmp')
+print('CasADi+OpenMP: OK')
 "
 ```
 
-- **无 WARNING** → OpenMP 就绪，跳过 2.5 节
-- **有 WARNING** → 按 2.5 节按平台修复
-
-### 2.5 按平台修复 OpenMP
-
-#### linux-aarch64（Jetson / 树莓派 / ARM 服务器）
-
-conda-forge 的 CasADi 二进制包未编译 OpenMP，需要源码编译：
-
-```bash
-# 前提条件
-cmake --version  # >= 3.20
-g++ --version    # 需支持 -fopenmp
-
-# 下载源码 + 编译安装（预计 30-60 分钟）
-pixi run download-casadi-src
-pixi run build-casadi-openmp
-```
-
-然后重新运行 2.4 的验证命令，确认无 WARNING。
-
-#### linux-x86_64 / macOS
-
-conda-forge 的二进制包通常包含 OpenMP。如果验证失败：
-- 检查是否安装了正确 channel 的 CasADi：`pixi run python -c "import casadi; print(casadi.__file__)"`，确认路径在 `.pixi/envs/` 下
-- 如果确认 conda-forge 当前版本确实无 OpenMP，参照 aarch64 步骤源码编译
+三行均应输出 OK，无 WARNING。
 
 ### 2.6 IPOPT 线性求解器
 
@@ -430,11 +414,7 @@ pixi install -e casadi
 
 ### 8.1 平台兼容性
 
-| 平台 | OpenMP | 说明 |
-|------|--------|------|
-| linux-aarch64 | 需源码编译 | 见 2.5 节 |
-| linux-x86_64 | 通常包含 | 用 2.4 验证确认 |
-| macOS ARM | 待验证 | — |
+全平台均通过源码编译安装 CasADi+OpenMP，`pixi run setup-casadi` 统一处理。
 
 ### 8.2 性能建议
 
@@ -466,8 +446,8 @@ pixi install -e casadi
 # 环境检查
 pixi run python scripts/check_env.py
 
-# OpenMP 源码编译（仅 aarch64）
-pixi run download-casadi-src && pixi run build-casadi-openmp
+# CasADi+OpenMP 环境搭建（首次，全平台）
+pixi run setup-casadi
 
 # 全部单元测试
 pixi run python -m pytest tests/unit/ -q --ignore=tests/unit/test_robotvisualization.py
