@@ -1,4 +1,4 @@
-"""Tests for the environment verification script (scripts/check_env.py)."""
+"""Tests for the environment verification script (scripts/check_casadi_env.py)."""
 
 import subprocess
 import sys
@@ -6,18 +6,18 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT_PATH = Path(__file__).resolve().parent.parent.parent / "scripts" / "check_env.py"
+SCRIPT_PATH = Path(__file__).resolve().parent.parent.parent / "scripts" / "check_casadi_env.py"
 
 
 class TestCheckEnvScript:
-    """Test that check_env.py exists, is executable, and produces valid output."""
+    """Test that check_casadi_env.py exists, is executable, and produces valid output."""
 
     def test_script_exists(self):
-        """The check_env.py script must exist."""
+        """The check_casadi_env.py script must exist."""
         assert SCRIPT_PATH.is_file(), f"Script not found at {SCRIPT_PATH}"
 
     def test_script_executable(self):
-        """The check_env.py script must be executable."""
+        """The check_casadi_env.py script must be executable."""
         assert SCRIPT_PATH.stat().st_mode & 0o111, (
             f"Script {SCRIPT_PATH} is not executable "
             f"(chmod +x {SCRIPT_PATH})"
@@ -77,10 +77,10 @@ class TestCheckEnvScript:
         )
 
     def test_script_invoked_directly(self):
-        """The script should be runnable via `python scripts/check_env.py`."""
+        """The script should be runnable via `python scripts/check_casadi_env.py`."""
         cwd = SCRIPT_PATH.parent.parent
         result = subprocess.run(
-            [sys.executable, "scripts/check_env.py"],
+            [sys.executable, "scripts/check_casadi_env.py"],
             capture_output=True,
             text=True,
             timeout=30,

@@ -83,7 +83,7 @@ pixi install -e casadi && pixi run -e casadi build-casadi-openmp
 ### 2.3 验证环境
 
 ```bash
-pixi run -e casadi python scripts/check_env.py
+pixi run -e casadi python scripts/check_casadi_env.py
 ```
 
 预期输出：
@@ -398,7 +398,7 @@ pixi install -e casadi
 
 ```bash
 # 环境检查
-pixi run -e casadi python scripts/check_env.py
+pixi run -e casadi python scripts/check_casadi_env.py
 
 # CasADi+OpenMP 环境搭建（首次，全平台）
 pixi install -e casadi && pixi run -e casadi build-casadi-openmp

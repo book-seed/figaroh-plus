@@ -2,7 +2,7 @@
 """FIGAROH 环境验证脚本。
 
 用法:
-    python scripts/check_env.py
+    python scripts/check_casadi_env.py
 
 返回值:
     0 — 全部组件可用
