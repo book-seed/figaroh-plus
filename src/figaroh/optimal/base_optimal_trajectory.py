@@ -405,18 +405,23 @@ class BaseOptimalTrajectory:
         import re
 
         robot_name = getattr(self, 'robot_name', self.robot.model.name)
+        traj_type = self.trajectory_config.get("trajectory_type", "spline")
         results_dir = Path(output_dir)
         if not results_dir.is_dir():
             self.logger.warning("Results directory '%s' does not exist", output_dir)
             return None
 
+        # Filename: {robot}_optimal_trajectory_{type}_{YYYYMMDD_HHMMSS}.pkl
         pattern = re.compile(
-            rf"{re.escape(robot_name)}_optimal_trajectory_(\d{{8}}_\d{{6}})\.pkl$"
+            rf"{re.escape(robot_name)}_optimal_trajectory_{re.escape(traj_type)}"
+            rf"_(\d{{8}}_\d{{6}})\.pkl$"
         )
 
         latest_path = None
         latest_ts = ""
-        for p in results_dir.glob(f"{robot_name}_optimal_trajectory_*.pkl"):
+        for p in results_dir.glob(
+            f"{robot_name}_optimal_trajectory_{traj_type}_*.pkl"
+        ):
             m = pattern.match(p.name)
             if m and m.group(1) > latest_ts:
                 latest_ts = m.group(1)
@@ -424,8 +429,8 @@ class BaseOptimalTrajectory:
 
         if latest_path is None:
             self.logger.warning(
-                "No .pkl matching '%s_optimal_trajectory_*.pkl' in '%s'",
-                robot_name, output_dir,
+                "No .pkl matching '%s_optimal_trajectory_%s_*.pkl' in '%s'",
+                robot_name, traj_type, output_dir,
             )
         return latest_path
 
@@ -548,7 +553,14 @@ class BaseOptimalTrajectory:
                 'condition_number_history': cond_history_per_segment
             }
 
-            saved_files = results_manager.save_results(results_dict, output_dir, save_formats=['pkl', 'yaml'])
+            # Include trajectory type in filename prefix
+            traj_type = self.trajectory_config.get("trajectory_type", "spline")
+            timestamp = __import__("datetime").datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_prefix = f"{robot_name}_optimal_trajectory_{traj_type}_{timestamp}"
+            saved_files = results_manager.save_results(
+                results_dict, output_dir, file_prefix=file_prefix,
+                save_formats=['pkl', 'yaml'],
+            )
             self.logger.info(f"Trajectory results saved successfully")
             return saved_files
         
