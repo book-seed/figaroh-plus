@@ -1,5 +1,5 @@
 workflow: tweak
-phase: build
+phase: archive
 context_compression: off
 build_mode: direct
 build_pause: null
@@ -12,9 +12,9 @@ auto_transition: true
 base_ref: e7f851a92af351c832b5c0bdfa7a27e81b767b9b
 design_doc: null
 plan: null
-verify_result: pending
-verification_report: null
-branch_status: pending
+verify_result: pass
+verification_report: docs/superpowers/reports/2026-07-25-fix-check-env-stderr-filter-verify.md
+branch_status: handled
 created_at: 2026-07-25
-verified_at: null
-archived: false
+verified_at: 2026-07-25
+archived: true
