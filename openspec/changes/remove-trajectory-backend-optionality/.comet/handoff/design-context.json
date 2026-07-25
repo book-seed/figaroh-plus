@@ -1,0 +1,15 @@
+{
+  "change": "remove-trajectory-backend-optionality",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "2ce368bc0df3fc4a3a3ef653b394e180711e28d705b24d99454cc758f7649474",
+  "files": [
+    { "path": "openspec/changes/remove-trajectory-backend-optionality/proposal.md", "sha256": "cb76bcfe333cfe79cb415ce28a8479a0aadd34ab06c77f3a0f748cc363df94e6" },
+    { "path": "openspec/changes/remove-trajectory-backend-optionality/design.md", "sha256": "04a67a4e043539cbaeb26ed8e5ec87ec4d8dcc49ade37a4389784fd77a26a2a4" },
+    { "path": "openspec/changes/remove-trajectory-backend-optionality/tasks.md", "sha256": "90dc740cb8218e1b7bc4921b61590e1283ef2cb324768df42ca3ff6a6fcd3f3f" },
+    { "path": "openspec/changes/remove-trajectory-backend-optionality/specs/excitation-trajectory-optimization/spec.md", "sha256": "446d5ca19c3ffbddcaac8fab8b4544d0722a8a8d490c9285053c36e5d3e5469e" },
+    { "path": "openspec/changes/remove-trajectory-backend-optionality/specs/symbolic-casadi-pipeline/spec.md", "sha256": "a1ac68222a545a7d0a4dad2f471e0221bf5205e1ba4b4e9c1a3b6f8bf339e953" }
+  ]
+}
