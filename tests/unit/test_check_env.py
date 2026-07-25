@@ -48,10 +48,16 @@ class TestCheckEnvScript:
         output = result.stdout
         stderr = result.stderr
 
-        # Filter library warnings from stderr (pinocchio, etc.)
+        # Filter library warnings from stderr (pinocchio, etc.).
+        # CasADi C++ runtime also emits a stderr WARNING(...) when built
+        # without OpenMP (e.g. the PyPI/non-compiled variant in some envs);
+        # it cannot be suppressed via Python warnings.filterwarnings and is
+        # an upstream-known fallback, so tolerate it here.
         stderr_filtered = "\n".join(
             line for line in stderr.strip().split("\n")
-            if "RuntimeWarning" not in line and "DeprecationWarning" not in line
+            if "RuntimeWarning" not in line
+            and "DeprecationWarning" not in line
+            and "CasADi" not in line
         )
         assert not stderr_filtered.strip(), f"Script produced unexpected stderr:\n{stderr}"
 

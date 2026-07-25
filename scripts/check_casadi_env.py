@@ -90,15 +90,19 @@ def check_casadi_openmp() -> bool:
 
 def main() -> int:
     print("=" * 50)
-    print("FIGAROH 环境验证")
+    print("FIGAROH 环境验证脚本")
     print("=" * 50)
 
     results = []
 
-    print("\n[依赖]")
+    print("\n[1] 基础依赖")
     results.append(("pinocchio", check_pinocchio()))
     results.append(("pinocchio.casadi", check_pinocchio_casadi()))
+
+    print("\n[2] IPOPT 线性求解器")
     results.append(("CasADi + IPOPT", check_casadi_ipopt()))
+
+    print("\n[3] CasADi OpenMP")
     results.append(("CasADi OpenMP", check_casadi_openmp()))
 
     print("\n" + "=" * 50)
