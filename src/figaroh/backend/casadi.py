@@ -94,7 +94,8 @@ def _lazy_import() -> None:
                 "CasADi backend requires conda-forge pinocchio with CasADi "
                 "bindings (the PyPI 'pin' package does NOT support CasADi).\n"
                 + hint +
-                "Alternative: use backend='numerical' (default)."
+                "The Fourier trajectory strategy requires this backend; use "
+                "trajectory_type='spline' if CasADi is unavailable."
             ) from e
         cpin = _cpin
 
