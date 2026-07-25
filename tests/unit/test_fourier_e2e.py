@@ -78,9 +78,8 @@ class TestFourierPipeline:
             return_value=(_make_config(), _make_id_config()),
         ):
             traj = BaseOptimalTrajectory(
-                simple_robot, ["joint_1"],
+                simple_robot,
                 config_file="dummy.yaml",
-                backend="casadi",
             )
 
         assert traj.strategy.name() == "fourier"
@@ -103,9 +102,8 @@ class TestFourierPipeline:
             return_value=(config, _make_id_config()),
         ):
             traj = BaseOptimalTrajectory(
-                simple_robot, ["joint_1"],
+                simple_robot,
                 config_file="dummy.yaml",
-                backend="casadi",
             )
         traj.initialize()
         traj.solve()
