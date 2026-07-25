@@ -62,7 +62,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
 
         Args:
             context: BaseOptimalTrajectory instance with robot model,
-                backend, and configuration.
+                symbolic backend, and configuration.
         """
         import casadi as cs
 

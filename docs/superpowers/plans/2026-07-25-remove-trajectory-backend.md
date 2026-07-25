@@ -6,7 +6,7 @@ base-ref: 4c40746a97f8bbdea701cab611e1aa200eb13076
 
 # 移除 BaseOptimalTrajectory 的 backend 可配置参数 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: 使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 逐任务实施。步骤使用复选框 (`- [ ]`) 语法跟踪。
+> **For agentic workers:** REQUIRED SUB-SKILL: 使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 逐任务实施。步骤使用复选框 (`- [x]`) 语法跟踪。
 
 **目标：** 删除 `BaseOptimalTrajectory` 的 `backend` 伪自由度参数及配套 ABC 抽象层，改由 `trajectory_type` 驱动 backend 选择（fourier → `CasadiBackend`，spline → `None`）。
 
@@ -62,18 +62,18 @@ base-ref: 4c40746a97f8bbdea701cab611e1aa200eb13076
 - Consumes: 无（被删对象）
 - Produces: 删除符号 `Backend` / `BackendType` / `create_backend` / `_create_casadi_backend`。下游消费者（`casadi.py:36`、`__init__.py:26`、`base_optimal_trajectory.py:37`、`test_backend.py:8`、`test_config.py` patch 点）将在后续任务修复。
 
-- [ ] **Step 1: 删除文件**
+- [x] **Step 1: 删除文件**
 
 ```bash
 git rm src/figaroh/backend/base.py
 ```
 
-- [ ] **Step 2: 确认删除后残留引用清单（预期全部在后续任务修复）**
+- [x] **Step 2: 确认删除后残留引用清单（预期全部在后续任务修复）**
 
 Run: `grep -rn "from figaroh.backend.base\|from .base import\|backend.base" src tests`
 Expected: 命中 `casadi.py:36`、`__init__.py:26`、`test_backend.py:8`（均在组 2/3/6 修复）。
 
-- [ ] **Step 3: 暂不 commit，与组 2 一并提交**
+- [x] **Step 3: 暂不 commit，与组 2 一并提交**
 
 ### Task 1.2: 删除 `src/figaroh/backend/numerical.py`
 
@@ -84,18 +84,18 @@ Expected: 命中 `casadi.py:36`、`__init__.py:26`、`test_backend.py:8`（均�
 - Consumes: 无
 - Produces: 删除符号 `NumericalBackend`。消费者 `__init__.py:27`、`base.py:180`（已删）、`test_backend.py:9` 在后续任务修复。
 
-- [ ] **Step 1: 删除文件**
+- [x] **Step 1: 删除文件**
 
 ```bash
 git rm src/figaroh/backend/numerical.py
 ```
 
-- [ ] **Step 2: 确认残留引用**
+- [x] **Step 2: 确认残留引用**
 
 Run: `grep -rn "NumericalBackend\|backend.numerical" src tests`
 Expected: 命中 `__init__.py:27`、`test_backend.py:9`（组 3/6 修复）。
 
-- [ ] **Step 3: 暂不 commit**
+- [x] **Step 3: 暂不 commit**
 
 ---
 
@@ -112,21 +112,21 @@ Expected: 命中 `__init__.py:27`、`test_backend.py:9`（组 3/6 修复）。
 **Interfaces:**
 - Produces: `class CasadiBackend:`（无基类），构造签名不变 `__init__(self, robot: Any)`。
 
-- [ ] **Step 1: 删除 import 行**
+- [x] **Step 1: 删除 import 行**
 
 删除 `casadi.py:36`：
 ```python
 from .base import Backend
 ```
 
-- [ ] **Step 2: 去除继承**
+- [x] **Step 2: 去除继承**
 
 `casadi.py:238`：
 ```python
 class CasadiBackend:           # 原: class CasadiBackend(Backend):
 ```
 
-- [ ] **Step 3: 更新类 docstring（可选，保持准确）**
+- [x] **Step 3: 更新类 docstring（可选，保持准确）**
 
 将类 docstring 中关于 ABC 抽象方法的暗示性描述去掉，仅保留「symbolic regressor + 缓存」职责描述。
 
@@ -142,14 +142,14 @@ class CasadiBackend:           # 原: class CasadiBackend(Backend):
 
 **依据：** fourier strategy 零调用这些方法（`fourier_strategy.py` 仅用 `_ensure_symbolic_model` / `_cmodel` / `regressor_function` / `rnea_function`）。
 
-- [ ] **Step 1: 删除上述 5 个方法/属性定义**
+- [x] **Step 1: 删除上述 5 个方法/属性定义**
 
-- [ ] **Step 2: 确认删除后无残留引用**
+- [x] **Step 2: 确认删除后无残留引用**
 
 Run: `grep -n "build_regressor\|\.gradient\|\.jacobian\|create_solver\|backend.name\|\.name ==" src/figaroh/backend/casadi.py`
 Expected: 无命中（`_map_ipopt_options` / `_IPOPT_OPTION_MAP` 仅被已删的 `create_solver` 使用——一并删除）。
 
-- [ ] **Step 3: 删除现已孤儿的 IPOPT 选项映射辅助**
+- [x] **Step 3: 删除现已孤儿的 IPOPT 选项映射辅助**
 
 `_IPOPT_OPTION_MAP`（L109-125）、`_map_ipopt_options`（L128-158）仅被 `create_solver` 使用，随之一并删除。删除后确认 `warnings` import 若无其他使用则保留（其他模块可能 import；保守保留 import 行）。
 
@@ -158,9 +158,9 @@ Expected: 无命中（`_map_ipopt_options` / `_IPOPT_OPTION_MAP` 仅被已删的
 **Files:**
 - Modify: `src/figaroh/backend/casadi.py:367-404`（删除 `regressor_is_jacobian_of_rnea` staticmethod，全工程零调用）
 
-- [ ] **Step 1: 删除该方法**
+- [x] **Step 1: 删除该方法**
 
-- [ ] **Step 2: 验证零调用**
+- [x] **Step 2: 验证零调用**
 
 Run: `grep -rn "regressor_is_jacobian_of_rnea" src tests`
 Expected: 无命中。
@@ -172,13 +172,13 @@ Expected: 无命中。
 
 **依据：** fourier strategy 不引用；deprecated `_solve_with_casadi_backend`（组 4 删除）不引用（用内联 `_SplineCb`）；仅 `test_backend.py:342` 测试。
 
-- [ ] **Step 1: 删除类定义与注释**
+- [x] **Step 1: 删除类定义与注释**
 
-- [ ] **Step 2: 清理仅被其使用的 import**
+- [x] **Step 2: 清理仅被其使用的 import**
 
 删除后检查 `Optional`（L30 `typing` import）是否仍被使用——`CasadiBackend.__init__` 等不再用 `Optional`。若 `typing` 行仅剩 `Callable, Any, Optional`，移除 `Optional`（`Callable` 也随 `gradient/jacobian/create_solver` 删除而可能不再需要——检查后移除未用符号）。
 
-- [ ] **Step 3: 验证零调用**
+- [x] **Step 3: 验证零调用**
 
 Run: `grep -rn "ColumnEliminationCallback" src tests`
 Expected: 仅 `test_backend.py:343` 命中（组 6.3 删除）。
@@ -187,7 +187,7 @@ Expected: 仅 `test_backend.py:343` 命中（组 6.3 删除）。
 
 **Files:** `src/figaroh/backend/casadi.py`（只读核对）
 
-- [ ] **Step 1: 核对保留成员存在且未被误删**
+- [x] **Step 1: 核对保留成员存在且未被误删**
 
 确认以下成员仍存在：
 - `_CACHE_VERSION`（L252）
@@ -200,7 +200,7 @@ Expected: 仅 `test_backend.py:343` 命中（组 6.3 删除）。
 Run: `grep -n "_CACHE_VERSION\|def __init__\|_cache_dir\|_cache_key\|_ensure_symbolic_model\|def regressor_function\|def rnea_function\|_cmodel\|_cdata\|_W_fun\|_rnea_fun" src/figaroh/backend/casadi.py`
 Expected: 全部命中。
 
-- [ ] **Step 2: Commit 组 1+2**
+- [x] **Step 2: Commit 组 1+2**
 
 ```bash
 git add src/figaroh/backend/casadi.py
@@ -227,7 +227,7 @@ Refs: remove-trajectory-backend-optionality D1-D4"
 **Interfaces:**
 - Produces: `figaroh.backend` 子包仅导出 `CasadiBackend`（try/except 懒加载保留，CasADi 缺失时为 `None`）。
 
-- [ ] **Step 1: 重写 `__init__.py` 全文**
+- [x] **Step 1: 重写 `__init__.py` 全文**
 
 ```python
 # Copyright [2021-2025] Thanh Nguyen
@@ -264,7 +264,7 @@ except ImportError:
 __all__ = ["CasadiBackend"]
 ```
 
-- [ ] **Step 2: 验证 import 链恢复**
+- [x] **Step 2: 验证 import 链恢复**
 
 Run: `pixi run python -c "import figaroh.backend; print(figaroh.backend.CasadiBackend)"`
 Expected: 默认环境输出 `None`（无 casadi）；casadi 环境输出类对象。
@@ -273,12 +273,12 @@ Expected: 默认环境输出 `None`（无 casadi）；casadi 环境输出类对�
 
 **Files:** `src/figaroh/__init__.py`（不改动，仅验证）
 
-- [ ] **Step 1: 验证根包 import**
+- [x] **Step 1: 验证根包 import**
 
 Run: `pixi run python -c "import figaroh; assert hasattr(figaroh, 'backend'); print('ok')"`
 Expected: `ok`
 
-- [ ] **Step 2: Commit 组 3**
+- [x] **Step 2: Commit 组 3**
 
 ```bash
 git add src/figaroh/backend/__init__.py
@@ -296,7 +296,7 @@ git commit -m "refactor(backend): slim backend/__init__ to export only CasadiBac
 **Files:**
 - Modify: `src/figaroh/optimal/base_optimal_trajectory.py:37`
 
-- [ ] **Step 1: 替换 import**
+- [x] **Step 1: 替换 import**
 
 ```python
 # 原 L37:
@@ -310,7 +310,7 @@ from figaroh.backend.casadi import CasadiBackend
 **Files:**
 - Modify: `src/figaroh/optimal/base_optimal_trajectory.py:68-77`（`__init__` 签名与 docstring）
 
-- [ ] **Step 1: 修改签名**
+- [x] **Step 1: 修改签名**
 
 ```python
     def __init__(self, robot, config_file: str = "config/robot_config.yaml"):
@@ -322,14 +322,14 @@ from figaroh.backend.casadi import CasadiBackend
         """
 ```
 
-- [ ] **Step 2: 删除 docstring 中 `backend:` 行**
+- [x] **Step 2: 删除 docstring 中 `backend:` 行**
 
 ### Task 4.3: 替换 backend 解析逻辑为 trajectory_type 驱动
 
 **Files:**
 - Modify: `src/figaroh/optimal/base_optimal_trajectory.py:89-97`
 
-- [ ] **Step 1: 用 D1 决策替换三级优先级逻辑**
+- [x] **Step 1: 用 D1 决策替换三级优先级逻辑**
 
 删除 L89-97 三级优先级逻辑，替换为：
 ```python
@@ -345,7 +345,7 @@ from figaroh.backend.casadi import CasadiBackend
 
 注意：下方已有 `traj_type = self.trajectory_config.get("trajectory_type", "spline")` 用于策略创建。可将两处合并为一次读取以避免重复——若合并，确保 `traj_type` 变量名不与下方冲突（可上移复用）。最小改动则保留两处独立读取（语义等价）。
 
-- [ ] **Step 2: 验证语法（仅编译）**
+- [x] **Step 2: 验证语法（仅编译）**
 
 Run: `pixi run python -c "import ast; ast.parse(open('src/figaroh/optimal/base_optimal_trajectory.py').read()); print('ok')"`
 Expected: `ok`
@@ -355,11 +355,11 @@ Expected: `ok`
 **Files:**
 - Modify: `src/figaroh/optimal/base_optimal_trajectory.py:664-955`（删除 `_solve_with_casadi_backend` 方法体，约 292 行，含其内部 `_SplineCb` 等辅助）
 
-- [ ] **Step 1: 删除 L664 至方法结束（L955，下一个方法 `solve_with_waypoints` 之前）**
+- [x] **Step 1: 删除 L664 至方法结束（L955，下一个方法 `solve_with_waypoints` 之前）**
 
 确认结束行：`_solve_with_casadi_backend` 在 L664 `def` 开始，至 L955 `return success, results` 结束（L956 空行，L957 为 `solve_with_waypoints`）。
 
-- [ ] **Step 2: 验证零调用残留**
+- [x] **Step 2: 验证零调用残留**
 
 Run: `grep -rn "_solve_with_casadi_backend" src`
 Expected: 仅 `solve_with_waypoints` 内 L974 触发分支（组 4.5 删除）。
@@ -369,7 +369,7 @@ Expected: 仅 `solve_with_waypoints` 内 L974 触发分支（组 4.5 删除）�
 **Files:**
 - Modify: `src/figaroh/optimal/base_optimal_trajectory.py:971-974`（`BaseTrajectoryIPOPTProblem.solve_with_waypoints` 内）
 
-- [ ] **Step 1: 删除触发分支**
+- [x] **Step 1: 删除触发分支**
 
 删除 L971-974：
 ```python
@@ -381,12 +381,12 @@ Expected: 仅 `solve_with_waypoints` 内 L974 触发分支（组 4.5 删除）�
 
 删除后 `solve_with_waypoints` 直接进入 cyipopt 路径（`IPOPTConfig.for_trajectory_optimization()` → `RobotIPOPTSolver`），与 spline 真实行为一致。
 
-- [ ] **Step 2: 验证 `backend.name` / `opt_traj._backend` 不再被 `solve_with_waypoints` 读取**
+- [x] **Step 2: 验证 `backend.name` / `opt_traj._backend` 不再被 `solve_with_waypoints` 读取**
 
 Run: `grep -n "backend.name\|opt_traj._backend" src/figaroh/optimal/base_optimal_trajectory.py`
 Expected: `solve_with_waypoints` 无命中（仅 `__init__` 中 `self._backend = ...` 保留）。
 
-- [ ] **Step 3: Commit 组 4**
+- [x] **Step 3: Commit 组 4**
 
 ```bash
 git add src/figaroh/optimal/base_optimal_trajectory.py
@@ -408,7 +408,7 @@ Refs: remove-trajectory-backend-optionality D1, D3"
 **Files:**
 - Modify: `src/figaroh/optimal/config.py:85`
 
-- [ ] **Step 1: 删除该行**
+- [x] **Step 1: 删除该行**
 
 删除 L85：
 ```python
@@ -420,7 +420,7 @@ Refs: remove-trajectory-backend-optionality D1, D3"
 **Files:**
 - Modify: `src/figaroh/optimal/config.py:126`
 
-- [ ] **Step 1: 删除该行**
+- [x] **Step 1: 删除该行**
 
 删除 L126：
 ```python
@@ -431,17 +431,17 @@ Refs: remove-trajectory-backend-optionality D1, D3"
 
 **Files:** 全工程（只读核对）
 
-- [ ] **Step 1: 搜索 trajectory_config / identif_config 的 backend 读取点**
+- [x] **Step 1: 搜索 trajectory_config / identif_config 的 backend 读取点**
 
 Run: `grep -rn 'trajectory_config\["backend"\]\|identif_config\["backend"\]\|\.get("backend"' src`
 Expected: 无命中。
 
-- [ ] **Step 2: 搜索 YAML 配置文件中的 `backend:` 键**
+- [x] **Step 2: 搜索 YAML 配置文件中的 `backend:` 键**
 
 Run: `grep -rn "backend:" --include="*.yaml" --include="*.yml" .`
 Expected: 无命中（设计文档确认全工程零命中）。若有命中则属遗留配置，按 D6 静默忽略语义保留文件不改。
 
-- [ ] **Step 3: Commit 组 5**
+- [x] **Step 3: Commit 组 5**
 
 ```bash
 git add src/figaroh/optimal/config.py
@@ -463,9 +463,9 @@ Refs: remove-trajectory-backend-optionality D6"
   - 删除 `class TestBackendABC`（L12-49）
   - 删除 `class TestCreateBackendFactory`（L51-107）
 
-- [ ] **Step 1: 删除上述两个类**
+- [x] **Step 1: 删除上述两个类**
 
-- [ ] **Step 2: 验证零残留 `create_backend` 工厂测试**
+- [x] **Step 2: 验证零残留 `create_backend` 工厂测试**
 
 Run: `grep -n "test_create_backend\|TestBackendABC\|TestCreateBackendFactory" tests/unit/test_backend.py`
 Expected: 无命中。
@@ -477,9 +477,9 @@ Expected: 无命中。
   - 删除 `class TestNumericalBackend`（L109-225）
   - 删除 `class TestRegressionSafety`（L358-404，依赖 `NumericalBackend.build_regressor` 对比）
 
-- [ ] **Step 1: 删除上述两个类**
+- [x] **Step 1: 删除上述两个类**
 
-- [ ] **Step 2: 验证零残留 `NumericalBackend` 测试**
+- [x] **Step 2: 验证零残留 `NumericalBackend` 测试**
 
 Run: `grep -n "NumericalBackend\|TestNumericalBackend\|TestRegressionSafety" tests/unit/test_backend.py`
 Expected: 仅文件顶部 import 行 L9 命中（组 6.4 清理 import）。
@@ -489,9 +489,9 @@ Expected: 仅文件顶部 import 行 L9 命中（组 6.4 清理 import）。
 **Files:**
 - Modify: `tests/unit/test_backend.py:341-356`（`test_column_elimination_callback`，位于 `TestCasadiBackend` 类内）
 
-- [ ] **Step 1: 删除该测试方法**
+- [x] **Step 1: 删除该测试方法**
 
-- [ ] **Step 2: 验证零残留**
+- [x] **Step 2: 验证零残留**
 
 Run: `grep -n "ColumnElimination" tests/unit/test_backend.py`
 Expected: 无命中。
@@ -509,9 +509,9 @@ Expected: 无命中。
   - 保留 `TestRootPackageExport`（L406-424）
 - Modify: `tests/unit/test_backend.py:8-9`（删除失效 import）
 
-- [ ] **Step 1: 删除上述 3 个死方法测试**
+- [x] **Step 1: 删除上述 3 个死方法测试**
 
-- [ ] **Step 2: 清理顶部 import**
+- [x] **Step 2: 清理顶部 import**
 
 将 L8-9：
 ```python
@@ -520,7 +520,7 @@ from figaroh.backend.numerical import NumericalBackend
 ```
 整体删除。后续按需新增 `from figaroh.backend.casadi import CasadiBackend`（各测试方法内已局部 import，保持现状即可）。
 
-- [ ] **Step 3: 验证 test_backend.py 可被 pytest 收集（语法正确）**
+- [x] **Step 3: 验证 test_backend.py 可被 pytest 收集（语法正确）**
 
 Run: `pixi run python -m pytest tests/unit/test_backend.py --collect-only -q`
 Expected: 无 SyntaxError/ImportError on `base`/`numerical`。
@@ -530,11 +530,11 @@ Expected: 无 SyntaxError/ImportError on `base`/`numerical`。
 **Files:**
 - Modify: `tests/unit/test_config.py:65-158`（删除 `class TestBaseOptimalTrajectoryBackendPrecedence` 全文，含 3 个测试）
 
-- [ ] **Step 1: 删除 L65-158 整个类**
+- [x] **Step 1: 删除 L65-158 整个类**
 
 这 3 个测试（`test_config_backend_used_when_default_arg` / `test_explicit_backend_wins_over_config` / `test_default_backend_when_no_config_backend`）断言 `create_backend` 调用与优先级，且使用旧 `["joint1"]` 位置参数签名（重构前已红）。
 
-- [ ] **Step 2: 验证零残留**
+- [x] **Step 2: 验证零残留**
 
 Run: `grep -n "TestBaseOptimalTrajectoryBackendPrecedence\|create_backend\|backend=" tests/unit/test_config.py`
 Expected: 无命中（`TestLoadParamBackend` L58-63 已为空 `pass`，可一并删除或保留——保留无害）。
@@ -544,7 +544,7 @@ Expected: 无命中（`TestLoadParamBackend` L58-63 已为空 `pass`，可一并
 **Files:**
 - Modify: `tests/unit/test_fourier_e2e.py:80-84, 105-109`
 
-- [ ] **Step 1: 删除两处 `backend="casadi"`**
+- [x] **Step 1: 删除两处 `backend="casadi"`**
 
 L80-84 与 L105-109 的 `BaseOptimalTrajectory(...)` 调用中移除 `backend="casadi"` 关键字参数。此步骤与 6.8 的签名修复在同一调用点合并执行（见 6.8）。
 
@@ -553,17 +553,17 @@ L80-84 与 L105-109 的 `BaseOptimalTrajectory(...)` 调用中移除 `backend="c
 **Files:**
 - Modify: `tests/unit/test_fourier_strategy.py:97-117`（核对，必要时调整）
 
-- [ ] **Step 1: 核对 mock CasadiBackend 接口与新契约一致**
+- [x] **Step 1: 核对 mock CasadiBackend 接口与新契约一致**
 
 当前 mock（L98-117）设置了：`name`、`regressor_function`、`rnea_function`、`_cmodel`、`_cdata`。新契约下 `name` 已删，但 mock 设 `mock_backend.name = "casadi"`（L99）无害——除非 `fourier_strategy.solve` 读取它（已确认不读）。保留 mock 不动即可。
 
 验证 `solve` 实际读取的属性均被 mock：`_ensure_symbolic_model`（L78）、`_cmodel`（L79）、`regressor_function`（L140）、`rnea_function`（L174）。
 
-- [ ] **Step 2: 补 mock `_ensure_symbolic_model` 方法**
+- [x] **Step 2: 补 mock `_ensure_symbolic_model` 方法**
 
 当前 mock 是 `MagicMock()`，`_ensure_symbolic_model` 自动为 no-op MagicMock 方法——调用 `cas_be._ensure_symbolic_model()` 不会真正构建模型，符合测试意图。无需改动。
 
-- [ ] **Step 3: 运行该测试（casadi 环境，因 import casadi as cs）**
+- [x] **Step 3: 运行该测试（casadi 环境，因 import casadi as cs）**
 
 Run: `pixi run -e casadi python -m pytest tests/unit/test_fourier_strategy.py -v`
 Expected: PASS。
@@ -576,7 +576,7 @@ Expected: PASS。
 
 **说明（扩展 tasks.md 6.8）：** `TestTrajectoryStrategyIntegration`（test_backend.py L486-615）4 个测试均使用 `BaseOptimalTrajectory(robot, ["joint1"], config_file="dummy.yaml")`，与 test_fourier_e2e.py 同源错配——重构前已红（design 文档「5 个失败」未计入 test_backend.py，但签名错配客观存在）。本任务一并修复。
 
-- [ ] **Step 1: 修 `test_fourier_e2e.py` 两处调用**
+- [x] **Step 1: 修 `test_fourier_e2e.py` 两处调用**
 
 L80-84：
 ```python
@@ -587,11 +587,11 @@ L80-84：
 ```
 L105-109 同理。
 
-- [ ] **Step 2: 修 `test_backend.py` `TestTrajectoryStrategyIntegration` 4 处调用**
+- [x] **Step 2: 修 `test_backend.py` `TestTrajectoryStrategyIntegration` 4 处调用**
 
 将 `BaseOptimalTrajectory(robot, ["joint1"], config_file="dummy.yaml")` 改为 `BaseOptimalTrajectory(robot, config_file="dummy.yaml")`（L513-515、L548-550、L575-577、L613-615）。
 
-- [ ] **Step 3: 处理 fourier 策略测试的 CasadiBackend mock**
+- [x] **Step 3: 处理 fourier 策略测试的 CasadiBackend mock**
 
 `test_fourier_strategy_created_when_configured`（L520）配置 `trajectory_type="fourier"`，重构后 `__init__` 会执行 `CasadiBackend(robot=robot)` → 默认环境无 casadi 抛 `ImportError`。需在 `patch("figaroh.optimal.base_optimal_trajectory.create_strategy")` 之外加 `patch("figaroh.optimal.base_optimal_trajectory.CasadiBackend")`：
 
@@ -612,7 +612,7 @@ L105-109 同理。
 
 spline 测试（L489、L556、L592）配置 `trajectory_type="spline"`，`__init__` 走 `self._backend = None`，无需 mock。
 
-- [ ] **Step 4: 运行 test_backend.py（默认环境）**
+- [x] **Step 4: 运行 test_backend.py（默认环境）**
 
 Run: `pixi run python -m pytest tests/unit/test_backend.py -v`
 Expected: 除依赖 casadi 的 `TestCasadiBackend`/`TestCasadiBackendProperties`（默认环境跳过或 mock）外，`TestTrajectoryStrategyIntegration` 全绿；无 TypeError。
@@ -624,18 +624,18 @@ Expected: 除依赖 casadi 的 `TestCasadiBackend`/`TestCasadiBackendProperties`
 
 **说明：** 设计文档原「保留 `TestCreateConfigBackend`」基于「目前通过」。但组 5.2 删除 `create_config` 的 `backend` 键后，该类 3 个测试断言 `assert "backend" in result` 与 `result["backend"] == "casadi"` 将失败。按 tasks.md 6.9「若其断言依赖 backend 键则同步删除」执行——确认依赖后删除整个类。
 
-- [ ] **Step 1: 确认断言依赖 backend 键**
+- [x] **Step 1: 确认断言依赖 backend 键**
 
 `TestCreateConfigBackend`（L7-55）：`test_create_config_with_backend` 断言 `"backend" in result`；`test_create_config_default_backend` 断言 `result["backend"] == "numerical"`；`test_create_config_backend_overrides_default` 断言 `result["backend"] == "casadi"`。全部依赖被删键。
 
-- [ ] **Step 2: 删除整个 `TestCreateConfigBackend` 类（L7-55）**
+- [x] **Step 2: 删除整个 `TestCreateConfigBackend` 类（L7-55）**
 
-- [ ] **Step 3: 运行 test_config.py（默认环境）**
+- [x] **Step 3: 运行 test_config.py（默认环境）**
 
 Run: `pixi run python -m pytest tests/unit/test_config.py -v`
 Expected: 全绿（`TestLoadParamBackend` 为空 `pass` 类，可保留）。
 
-- [ ] **Step 4: Commit 组 6**
+- [x] **Step 4: Commit 组 6**
 
 ```bash
 git add tests/unit/test_backend.py tests/unit/test_config.py tests/unit/test_fourier_e2e.py tests/unit/test_fourier_strategy.py
@@ -655,27 +655,27 @@ TestTrajectoryStrategyIntegration. Mock CasadiBackend in fourier strategy test."
 
 ### Task 7.1: casadi 环境运行 `tests/unit/`
 
-- [ ] **Step 1: 运行 casadi 环境单测**
+- [x] **Step 1: 运行 casadi 环境单测**
 
 Run: `pixi run -e casadi pytest tests/unit/ -v`
 Expected: 全绿（除明确删除的 backend 测试外）。fourier 路径依赖 casadi 环境的符号模型，`test_fourier_e2e.py`、`test_fourier_strategy.py` 应通过。
 
 ### Task 7.2: 默认环境运行全量 pytest
 
-- [ ] **Step 1: 运行默认环境全量**
+- [x] **Step 1: 运行默认环境全量**
 
 Run: `pixi run pytest`
 Expected: 全绿。spline 路径与现有测试不受影响。重构前 5 个失败（test_config.py 3 + test_fourier_e2e.py 2）已随组 6 修复；若仍有失败需排查是否为 casadi-only 测试在默认环境的预期跳过。
 
 ### Task 7.3: grep 全工程确认符号消失
 
-- [ ] **Step 1: 搜索被删符号**
+- [x] **Step 1: 搜索被删符号**
 
 Run: `grep -rn "Backend\b" src/figaroh | grep -v "CasadiBackend"`
 Run: `grep -rn "BackendType\|create_backend\|NumericalBackend\|ColumnEliminationCallback\|_solve_with_casadi_backend" src`
 Expected: src 中无命中（`CasadiBackend` 除外）。
 
-- [ ] **Step 2: 搜索 `backend=` 关键字参数与 YAML `backend:` 键**
+- [x] **Step 2: 搜索 `backend=` 关键字参数与 YAML `backend:` 键**
 
 Run: `grep -rn "backend=" src tests`
 Run: `grep -rn "backend:" --include="*.yaml" --include="*.yml" .`
@@ -683,14 +683,14 @@ Expected: src/tests 无 `backend=` 命中；YAML 无 `backend:` 命中。
 
 ### Task 7.4: 手动验收 1 — fourier 配置启动
 
-- [ ] **Step 1: casadi 环境运行 UR10 fourier 示例**
+- [x] **Step 1: casadi 环境运行 UR10 fourier 示例**
 
 Run: `pixi run -e casadi python figaroh-examples/examples/ur10/optimal_trajectory.py`
 Expected: 进入 `FourierOptimizationStrategy.solve()` 不抛 `AttributeError`；`CasadiBackend` 被自动创建（`trajectory_type == "fourier"` 分支）。观察日志含 `Trajectory optimization strategy: fourier`。
 
 ### Task 7.5: 手动验收 2 — `backend=` 抛 TypeError
 
-- [ ] **Step 1: 验证 backend= 被拒**
+- [x] **Step 1: 验证 backend= 被拒**
 
 Run:
 ```bash
@@ -707,7 +707,7 @@ except TypeError as e:
 ```
 Expected: `OK: TypeError raised: ... unexpected keyword argument 'backend'`
 
-- [ ] **Step 2: 最终 commit（如有验证过程产生的修复）**
+- [x] **Step 2: 最终 commit（如有验证过程产生的修复）**
 
 ```bash
 git add -A

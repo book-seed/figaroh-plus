@@ -96,7 +96,6 @@ class TestFourierStrategySolveFlow:
 
         # Mock CasadiBackend with regressor_function and rnea_function
         mock_backend = MagicMock()
-        mock_backend.name = "casadi"
 
         # Create minimal SX functions for the mock backend
         cs_q = cs.SX.sym("q", 1)
