@@ -141,7 +141,8 @@ src/figaroh/backend/
 delta spec 内容（ADDED/MODIFIED/REMOVED requirements）已由 open 阶段产出，覆盖以下验收场景：
 
 - `excitation-trajectory-optimization/spec.md`：ADDED「Backend determined by trajectory type」（4 scenarios）；REMOVED「Backward compatibility with existing spline pipeline」。
-- `symbolic-casadi-pipeline/spec.md`：MODIFIED「CasADi single source of truth」（3 scenarios）；REMOVED「Extensible additional parameter columns」。
+- `symbolic-casadi-pipeline/spec.md`：MODIFIED「CasADi single source of truth」（3 scenarios）；MODIFIED「Symbolic regressor matrix construction」（把原引用 numerical backend 列顺序的 AND 子句改为 backend-independent 固定列顺序）。原拟的 REMOVED「Extensible additional parameter columns」经核对主 spec 不存在该独立 requirement（相关内容嵌在「Symbolic regressor matrix construction」的 scenario 子句中），故改为 MODIFIED 同一 requirement 而非 REMOVED。
+
 
 ## 6. 实施顺序
 
