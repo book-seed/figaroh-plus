@@ -1,5 +1,5 @@
 workflow: full
-phase: verify
+phase: archive
 context_compression: off
 build_mode: executing-plans
 build_pause: null
@@ -12,11 +12,11 @@ auto_transition: true
 base_ref: 4c40746a97f8bbdea701cab611e1aa200eb13076
 design_doc: docs/superpowers/specs/2026-07-25-remove-trajectory-backend-design.md
 plan: docs/superpowers/plans/2026-07-25-remove-trajectory-backend.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-07-25-remove-trajectory-backend-optionality-verify.md
 branch_status: handled
 created_at: 2026-07-25
-verified_at: null
+verified_at: 2026-07-25
 archived: false
 handoff_context: openspec/changes/remove-trajectory-backend-optionality/.comet/handoff/design-context.json
 handoff_hash: 2ce368bc0df3fc4a3a3ef653b394e180711e28d705b24d99454cc758f7649474
