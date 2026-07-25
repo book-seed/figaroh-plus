@@ -19,16 +19,6 @@ The `BaseOptimalTrajectory` class SHALL select the active trajectory strategy ba
 - **WHEN** `trajectory_type` is absent or set to `"spline"`
 - **THEN** `BaseOptimalTrajectory` SHALL use the existing cubic spline pipeline unchanged
 
-### Requirement: Backward compatibility with existing spline pipeline
-
-The system SHALL preserve the exact behavior of the existing cubic-spline-based excitation trajectory optimization when `trajectory_type` is `"spline"` or unspecified. All existing configuration files, saved results, and API calls SHALL continue to work without modification.
-
-#### Scenario: Legacy config works
-
-- **WHEN** a pre-existing YAML configuration file without `trajectory_type` is loaded
-- **THEN** the optimization SHALL behave identically to before the change
-- **AND** all saved output formats SHALL remain compatible
-
 ### Requirement: Base parameter computation independence
 
 The system SHALL continue to compute base parameter indices `idx_b` via the existing `BaseParameterComputer` (random cubic spline trajectory + QR decomposition), independent of the selected `trajectory_type`. This ensures base parameters are determined by the robot's structural properties rather than the trajectory parameterization.
@@ -46,4 +36,34 @@ The system SHALL support dynamic column appending to the symbolic regressor matr
 
 - **WHEN** a future change adds a new flag (e.g., `has_spring_stiffness`) to `identif_config`
 - **THEN** adding the corresponding column to the symbolic regressor SHALL require only defining the column expression and updating the column offset counter
+
+### Requirement: Backend determined by trajectory type
+
+The system SHALL NOT expose a user-configurable `backend` parameter on `BaseOptimalTrajectory`. The computation backend SHALL be determined automatically and exclusively by the `trajectory_type` configuration field. When `trajectory_type` is `"fourier"`, the system SHALL instantiate `CasadiBackend` directly (no factory indirection). When `trajectory_type` is `"spline"` or absent, the system SHALL NOT instantiate any backend (the spline pipeline uses cyipopt via `RobotIPOPTSolver` and does not consume a backend abstraction).
+
+The `trajectory_config` dictionary SHALL NOT contain a `backend` key, and the configuration loader SHALL NOT parse any `backend` entry from YAML.
+
+#### Scenario: Fourier auto-selects CasADi backend
+
+- **WHEN** `trajectory_type: "fourier"` is configured
+- **THEN** `BaseOptimalTrajectory.__init__` SHALL instantiate `CasadiBackend(robot=robot)` and store it as `self._backend`
+- **AND** SHALL NOT require the caller to pass any `backend` argument
+
+#### Scenario: Spline creates no backend
+
+- **WHEN** `trajectory_type` is `"spline"` or absent
+- **THEN** `BaseOptimalTrajectory.__init__` SHALL set `self._backend = None`
+- **AND** the cubic spline pipeline SHALL proceed unchanged via `create_ipopt_problem` → `RobotIPOPTSolver`
+
+#### Scenario: Explicit backend argument rejected
+
+- **WHEN** a caller invokes `BaseOptimalTrajectory(robot, config_file, backend="casadi")` or `backend="numerical"`
+- **THEN** the call SHALL raise `TypeError` (unexpected keyword argument `backend`)
+- **AND** no silent acceptance or deprecation warning SHALL be emitted
+
+#### Scenario: YAML backend key ignored
+
+- **WHEN** a YAML configuration file contains a `backend:` key under `problem` or `identification.trajectory_params`
+- **THEN** the loader SHALL NOT parse the key into `trajectory_config`
+- **AND** the effective backend SHALL be determined solely by `trajectory_type`
 

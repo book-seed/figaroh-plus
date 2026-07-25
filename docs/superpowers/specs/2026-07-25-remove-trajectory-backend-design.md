@@ -2,6 +2,8 @@
 comet_change: remove-trajectory-backend-optionality
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
+status: final
 ---
 
 # Design Doc: Remove Trajectory Backend Optionality

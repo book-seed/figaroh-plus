@@ -2,6 +2,7 @@
 change: remove-trajectory-backend-optionality
 design-doc: docs/superpowers/specs/2026-07-25-remove-trajectory-backend-design.md
 base-ref: 4c40746a97f8bbdea701cab611e1aa200eb13076
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 # 移除 BaseOptimalTrajectory 的 backend 可配置参数 实施计划
@@ -47,6 +48,7 @@ base-ref: 4c40746a97f8bbdea701cab611e1aa200eb13076
 - **修红（修既有红，非制造红）**：6.7, 6.8（含 test_backend.py `TestTrajectoryStrategyIntegration` 4 个测试的同源签名修复——见 6.8 扩展说明）
 - **验证型 TDD（先写期望行为测试再改）**：4.2+4.3（backend 参数移除 + trajectory_type 驱动选择）适合先补一个「`backend=` 抛 TypeError」与「fourier 自动建 CasadiBackend」的断言测试，再改实现。
 
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 ## 任务组 1：删除 backend 抽象层（base / numerical）
@@ -97,6 +99,7 @@ Expected: 命中 `__init__.py:27`、`test_backend.py:9`（组 3/6 修复）。
 
 - [x] **Step 3: 暂不 commit**
 
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 ## 任务组 2：改造 CasadiBackend（去 ABC 化）
@@ -215,6 +218,7 @@ Refs: remove-trajectory-backend-optionality D1-D4"
 
 注意：此时 `backend/__init__.py` 仍引用已删的 `base`/`numerical`，import 链暂时破损——组 3 立即修复。不要在 commit 前运行 import。
 
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 ## 任务组 3：瘦身 backend 子包 `__init__`
@@ -285,6 +289,7 @@ git add src/figaroh/backend/__init__.py
 git commit -m "refactor(backend): slim backend/__init__ to export only CasadiBackend"
 ```
 
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 ## 任务组 4：改造 BaseOptimalTrajectory 入口
@@ -399,6 +404,7 @@ _solve_with_casadi_backend and its solve_with_waypoints trigger.
 Refs: remove-trajectory-backend-optionality D1, D3"
 ```
 
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 ## 任务组 5：改造 config 加载器
@@ -450,6 +456,7 @@ git commit -m "refactor(config): stop parsing backend key from YAML
 Refs: remove-trajectory-backend-optionality D6"
 ```
 
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 ## 任务组 6：调整测试
@@ -649,6 +656,7 @@ mismatch pre-existing in test_fourier_e2e.py and test_backend.py
 TestTrajectoryStrategyIntegration. Mock CasadiBackend in fourier strategy test."
 ```
 
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 ## 任务组 7：验证
@@ -714,6 +722,7 @@ git add -A
 git commit -m "verify: all green on casadi + default env, symbols purged" --allow-empty
 ```
 
+archived-with: 2026-07-25-remove-trajectory-backend-optionality
 ---
 
 ## 自检清单（Self-Review）

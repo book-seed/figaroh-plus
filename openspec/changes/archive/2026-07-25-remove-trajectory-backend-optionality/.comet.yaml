@@ -17,6 +17,6 @@ verification_report: docs/superpowers/reports/2026-07-25-remove-trajectory-backe
 branch_status: handled
 created_at: 2026-07-25
 verified_at: 2026-07-25
-archived: false
+archived: true
 handoff_context: openspec/changes/remove-trajectory-backend-optionality/.comet/handoff/design-context.json
 handoff_hash: 2ce368bc0df3fc4a3a3ef653b394e180711e28d705b24d99454cc758f7649474
