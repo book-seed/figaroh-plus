@@ -177,8 +177,9 @@ class TestTrajectoryStrategyIntegration:
             assert hasattr(traj, "strategy")
             assert traj.strategy.name() == "spline"
             assert isinstance(traj.strategy, SplineOptimizationStrategy)
-            # Spline creates no backend.
-            assert traj._backend is None
+            # Spline creates no backend; base no longer holds a _backend
+            # attribute at all (the Fourier strategy constructs it on demand).
+            assert not hasattr(traj, "_backend")
 
     def test_fourier_strategy_created_when_configured(self):
         """trajectory_type 'fourier' creates FourierOptimizationStrategy."""
@@ -201,30 +202,26 @@ class TestTrajectoryStrategyIntegration:
                 },
                 {"active_joints": ["joint1"]},
             )
-            # fourier instantiates CasadiBackend — mock it so the test does
-            # not require a real casadi install in the default env.
+            # CasadiBackend is no longer instantiated by the base class — it
+            # is constructed on demand inside FourierOptimizationStrategy.solve,
+            # so fourier config only needs the strategy to be created with the
+            # fourier_config kwargs. No casadi install is required here.
             with patch(
-                "figaroh.optimal.base_optimal_trajectory.CasadiBackend"
-            ) as mock_cb:
-                mock_backend = MagicMock()
-                mock_cb.return_value = mock_backend
+                "figaroh.optimal.base_optimal_trajectory.create_strategy"
+            ) as mock_create:
+                mock_strategy = MagicMock()
+                mock_strategy.name.return_value = "fourier"
+                mock_create.return_value = mock_strategy
 
-                with patch(
-                    "figaroh.optimal.base_optimal_trajectory.create_strategy"
-                ) as mock_create:
-                    mock_strategy = MagicMock()
-                    mock_strategy.name.return_value = "fourier"
-                    mock_create.return_value = mock_strategy
-
-                    traj = BaseOptimalTrajectory(
-                        robot, config_file="dummy.yaml",
-                    )
-                    mock_create.assert_called_once_with(
-                        "fourier", fourier_config={"n_harmonics": 5}
-                    )
-                    mock_cb.assert_called_once_with(robot=robot)
-                    assert traj.strategy.name() == "fourier"
-                    assert traj._backend is mock_backend
+                traj = BaseOptimalTrajectory(
+                    robot, config_file="dummy.yaml",
+                )
+                mock_create.assert_called_once_with(
+                    "fourier", fourier_config={"n_harmonics": 5}
+                )
+                assert traj.strategy.name() == "fourier"
+                # Base no longer holds a _backend attribute.
+                assert not hasattr(traj, "_backend")
 
     def test_solve_delegates_to_strategy(self):
         """solve() delegates to strategy.solve()."""

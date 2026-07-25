@@ -94,7 +94,10 @@ class TestFourierStrategySolveFlow:
         mock_robot.model.effortLimit = np.array([100.0])
         mock_robot.model.inertias.tolist.return_value = [MagicMock(mass=1.0)]
 
-        # Mock CasadiBackend with regressor_function and rnea_function
+        # Mock CasadiBackend with regressor_function and rnea_function.
+        # solve() now constructs CasadiBackend(robot=context.robot) internally,
+        # so we patch it at the fourier_strategy module rather than pre-setting
+        # a _backend attribute on the context.
         mock_backend = MagicMock()
 
         # Create minimal SX functions for the mock backend
@@ -113,7 +116,6 @@ class TestFourierStrategySolveFlow:
         mock_backend._cmodel = mock_robot.model
         mock_backend._cdata = MagicMock()
 
-        mock_ctx._backend = mock_backend
         mock_ctx.results = {
             'T_F': [], 'P_F': [], 'V_F': [], 'A_F': [],
             'iteration_data': [], 'final_regressor_shape': None,
@@ -122,10 +124,14 @@ class TestFourierStrategySolveFlow:
 
         # Run solve -- should populate results (the mock NLP will fail
         # but the trajectory construction should still execute)
-        try:
-            strategy.solve(mock_ctx)
-        except Exception:
-            pass
+        with patch(
+            "figaroh.backend.casadi.CasadiBackend",
+            return_value=mock_backend,
+        ):
+            try:
+                strategy.solve(mock_ctx)
+            except Exception:
+                pass
 
         # Check that results were populated even if NLP failed
         assert 'T_F' in mock_ctx.results

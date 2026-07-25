@@ -61,10 +61,11 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         """Build and solve the fully symbolic Fourier NLP.
 
         Args:
-            context: BaseOptimalTrajectory instance with robot model,
-                symbolic backend, and configuration.
+            context: BaseOptimalTrajectory instance with robot model
+                and configuration.
         """
         import casadi as cs
+        from figaroh.backend.casadi import CasadiBackend
 
         cfg = self._fourier_config
         n_harmonics = cfg["n_harmonics"]
@@ -74,7 +75,11 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         tanh_alpha_id = cfg["tanh_alpha_id"]  # reserved for identification phase (not used in optimization)
         freq = cfg.get("fourier_frequency")
 
-        cas_be = context._backend
+        # CasadiBackend is owned by the Fourier strategy (the sole consumer
+        # of the symbolic model). Construction is cheap: symbolics are built
+        # lazily and disk-cached per robot inertia fingerprint, so rebuilding
+        # per solve only costs a `cs.Function.load` on cache hit.
+        cas_be = CasadiBackend(robot=context.robot)
         cas_be._ensure_symbolic_model()
         cmodel = cas_be._cmodel
         nq = cmodel.nq

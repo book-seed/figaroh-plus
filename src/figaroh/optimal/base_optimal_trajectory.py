@@ -34,7 +34,6 @@ from typing import Dict, List, Tuple, Any
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-from figaroh.backend.casadi import CasadiBackend
 from figaroh.tools.regressor import (
     build_regressor_basic,
     build_regressor_reduced,
@@ -84,16 +83,11 @@ class BaseOptimalTrajectory:
         
         self.active_joints = self.identif_config["active_joints"]
 
-        # Backend is determined solely by trajectory_type: only the Fourier
-        # strategy needs the CasADi symbolic model; spline trajectories use
-        # cyipopt directly and carry no backend.
-        traj_type = self.trajectory_config.get("trajectory_type", "spline")
-        if traj_type == "fourier":
-            self._backend = CasadiBackend(robot=robot)
-        else:
-            self._backend = None
-
         # ── Strategy pattern ──────────────────────────────────────────
+        # Backend ownership: only the Fourier strategy needs the CasADi
+        # symbolic model, and now constructs it internally on demand. Spline
+        # trajectories use cyipopt directly and carry no backend.
+        traj_type = self.trajectory_config.get("trajectory_type", "spline")
         if traj_type == "fourier":
             fourier_cfg = self.trajectory_config.get("fourier_config", {})
             self.strategy = create_strategy(traj_type, fourier_config=fourier_cfg)

@@ -107,11 +107,19 @@ class CasadiBackend:
     (lazy initialization), evaluates it vectorised via ``cs.Function.map()``,
     and exposes the regressor / RNEA functions as properties for the Fourier
     trajectory strategy. There is no longer an abstract ``Backend`` base
-    class — ``CasadiBackend`` is the sole backend, created automatically when
-    ``trajectory_type == 'fourier'``.
+    class — ``CasadiBackend`` is the sole backend, created on demand by the
+    Fourier trajectory strategy (the sole consumer of the symbolic model).
 
     Args:
         robot: ``RobotWrapper`` instance (required for symbolic model).
+
+    TODO(shared-symbolic-model): when the identification phase also adopts the
+    symbolic regressor, replace ad-hoc construction with a module-level shared
+    singleton indexed by robot inertia fingerprint (e.g.
+    ``get_symbolic_model(robot)``), reused by both fourier and identification.
+    For now, the disk cache (``_cache_key`` + ``~/.figaroh/casadi_cache``)
+    already collapses rebuild cost to a single ``cs.Function.load`` on cache
+    hit, so independent construction is fine and premature sharing is avoided.
     """
 
     # Version tag appended to cache keys — bump when the symbolic
