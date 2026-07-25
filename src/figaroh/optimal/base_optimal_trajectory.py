@@ -34,7 +34,7 @@ from typing import Dict, List, Tuple, Any
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-from figaroh.backend.base import BackendType, create_backend
+from figaroh.backend.casadi import CasadiBackend
 from figaroh.tools.regressor import (
     build_regressor_basic,
     build_regressor_reduced,
@@ -65,16 +65,13 @@ class BaseOptimalTrajectory:
     robot-specific configuration loading and constraint handling.
     """
 
-    def __init__(self, robot, active_joints: List[str],
-                 config_file: str = "config/robot_config.yaml",
-                 backend: BackendType = "numerical"):
+    def __init__(self, robot,
+                 config_file: str = "config/robot_config.yaml"):
         """Initialize the optimal trajectory generator.
 
         Args:
             robot: RobotWrapper instance.
-            active_joints: List of active joint names.
             config_file: Path to configuration YAML file.
-            backend: Backend specifier — "numerical" (default), "casadi", or a Backend instance.
         """
         self.robot = robot
         self.model = self.robot.model
@@ -87,18 +84,16 @@ class BaseOptimalTrajectory:
         
         self.active_joints = self.identif_config["active_joints"]
 
-        # Backend selection with precedence:
-        # 1. Explicit programmatic argument (highest)
-        # 2. Config file 'backend' key
-        # 3. Default 'numerical'
-        if backend == "numerical" and self.trajectory_config.get("backend"):
-            effective_backend = self.trajectory_config["backend"]
+        # Backend is determined solely by trajectory_type: only the Fourier
+        # strategy needs the CasADi symbolic model; spline trajectories use
+        # cyipopt directly and carry no backend.
+        traj_type = self.trajectory_config.get("trajectory_type", "spline")
+        if traj_type == "fourier":
+            self._backend = CasadiBackend(robot=robot)
         else:
-            effective_backend = backend
-        self._backend = create_backend(effective_backend, robot=robot)
+            self._backend = None
 
         # ── Strategy pattern ──────────────────────────────────────────
-        traj_type = self.trajectory_config.get("trajectory_type", "spline")
         if traj_type == "fourier":
             fourier_cfg = self.trajectory_config.get("fourier_config", {})
             self.strategy = create_strategy(traj_type, fourier_config=fourier_cfg)
@@ -662,299 +657,6 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             jac[:min_dim, :min_dim] = np.eye(min_dim)
             return jac
     
-    def _solve_with_casadi_backend(self, wps) -> Tuple[bool, Dict[str, Any]]:
-        """Solve using CasADi ``nlpsol`` with **hybrid symbolic NLP**.
-
-        .. deprecated::
-            Use the Fourier strategy (``trajectory_type='fourier'``) instead,
-            which builds the CasADi SX graph directly without requiring
-            Callback wrappers. This method is retained for backward
-            compatibility with the spline-based approach.
-
-        Architecture
-        ------------
-        Only the **spline** is wrapped as a ``cs.Callback`` (it uses
-        scipy and is cheap — just 18 inputs).  Everything downstream
-        — regressor, condition number, constraints, torque (RNEA) —
-        is built with CasADi SX operations and ``pinocchio.casadi``.
-        CasADi auto-differentiates through the Callback using the
-        chain rule: FD for the spline, analytical AD for the rest.
-
-        This gives **exact** Jacobian and Hessian for the expensive
-        parts of the pipeline while only paying FD cost on the
-        cheap spline mapping.
-        """
-        import casadi as cs
-        import pinocchio.casadi as cpin
-
-        warnings.warn(
-            "_solve_with_casadi_backend is deprecated. Use Fourier strategy "
-            "(trajectory_type='fourier') which builds the CasADi SX graph "
-            "directly without Callback wrappers.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        # ── Nested helper: spline Callback factory ─────────────────
-        def _create_spline_callback():
-            """Wrap scipy cubic-spline interpolation as a cs.Callback."""
-            n_joints = len(self.opt_traj.CB.act_idxq)
-
-            class _SplineCb(cs.Callback):
-                def __init__(self):
-                    cs.Callback.__init__(self)
-                    self._opt_traj = self_ref.opt_traj
-                    self._opt_cb = self_ref.opt_cb
-                    self._tps = self_ref.tps
-                    self._vel_wps = self_ref.vel_wps
-                    self._acc_wps = self_ref.acc_wps
-                    self._wp_init = self_ref.wp_init
-                    self._n_wps = self_ref.n_wps
-                    self._freq = freq
-                    self._n_joints = n_joints
-                    self._n_vars = n_vars
-                    x0 = np.zeros(n_vars)
-                    q0, v0, a0 = self._evaluate_spline(x0)
-                    self._ns = q0.shape[0]
-                    self._n_out = 3 * self._ns * n_joints
-                    self.construct("spline_cb", {"enable_fd": True})
-
-                def _evaluate_spline(self, x):
-                    """Convert X → waypoints → spline → Q, V, A."""
-                    wps_X = np.reshape(x, (self._n_wps - 1, self._n_joints))
-                    wps = np.vstack((self._wp_init, wps_X)).transpose()
-                    _t_f, p_f, v_f, a_f = self._opt_traj.CB.get_full_config(
-                        self._freq, self._tps, wps,
-                        self._vel_wps, self._acc_wps,
-                    )
-                    return (
-                        p_f[:, self._opt_traj.CB.act_idxq],
-                        v_f[:, self._opt_traj.CB.act_idxv],
-                        a_f[:, self._opt_traj.CB.act_idxv],
-                    )
-
-                def get_n_in(self):
-                    return 1
-
-                def get_n_out(self):
-                    return 1
-
-                def get_sparsity_in(self, i):
-                    return cs.Sparsity.dense(self._n_vars)
-
-                def get_sparsity_out(self, i):
-                    return cs.Sparsity.dense(self._n_out)
-
-                def eval(self, arg):
-                    x = np.array(arg[0]).flatten()
-                    qq, vv, aa = self._evaluate_spline(x)
-                    out = np.concatenate([qq.flatten(), vv.flatten(), aa.flatten()])
-                    return [out]
-
-            return _SplineCb()
-
-        # ── Nested helper: symbolic objective expression ──────────
-        def _build_objective_expr(Q_sym, V_sym, A_sym):
-            """Build a proxy objective: smoothness + excitation."""
-            w_accel = 1.0
-            w_vel = -0.01  # negative = encourage velocity (excitation)
-            return w_accel * cs.sumsqr(A_sym) + w_vel * cs.sumsqr(V_sym)
-
-        # ── Nested helper: symbolic constraint expression ─────────
-        def _build_constraints_expr(Q_sym, V_sym, A_sym):
-            """Build position, velocity, and torque constraint expressions."""
-            Ns = Q_sym.shape[0]
-            n_act = Q_sym.shape[1]
-            nv = cmodel.nv
-
-            constraints = []
-
-            # Waypoint sample indices
-            tps_arr = np.array(self.tps).flatten()
-            freq = self.opt_traj.trajectory_config["freq"]
-            wp_samples = [min(int(round(t * freq)), Ns - 1)
-                          for t in tps_arr - tps_arr[0]]
-
-            # Position constraints at waypoints
-            for k in range(1, self.n_wps):
-                if wp_samples[k] < Ns:
-                    row = wp_samples[k]
-                    for j in range(n_act):
-                        constraints.append(Q_sym[row, j])
-
-            # Velocity constraints at all samples
-            constraints.append(cs.vec(V_sym))
-
-            # Torque constraints at waypoints (symbolic RNEA)
-            act_idxq = self.opt_traj.CB.act_idxq
-            act_idxv = self.opt_traj.CB.act_idxv
-
-            for k in range(1, self.n_wps):
-                idx = wp_samples[k]
-                if idx >= Ns:
-                    continue
-                q_full = cs.SX.zeros(cmodel.nq)
-                v_full = cs.SX.zeros(nv)
-                a_full = cs.SX.zeros(nv)
-                for i, jid in enumerate(act_idxq):
-                    q_full[jid] = Q_sym[idx, i]
-                for i, jid in enumerate(act_idxv):
-                    v_full[jid] = V_sym[idx, i]
-                    a_full[jid] = A_sym[idx, i]
-                try:
-                    tau = cpin.rnea(cmodel, cdata, q_full, v_full, a_full)
-                    for j in range(nv):
-                        constraints.append(tau[j])
-                except Exception:
-                    pass
-
-            if not constraints:
-                return cs.SX.zeros(1)
-            return cs.vertcat(*constraints)
-
-        # ── Nested helper: symbolic constraint bounds ─────────────
-        def _build_constraint_bounds(Q_sym, V_sym, A_sym):
-            """Build constraint bounds matching _build_constraints_expr order."""
-            Ns = Q_sym.shape[0]
-            n_act = Q_sym.shape[1]
-            nv = cmodel.nv
-
-            cl = []
-            cu = []
-
-            cb = self.opt_traj.CB
-            freq = self.opt_traj.trajectory_config["freq"]
-            tps_arr = np.array(self.tps).flatten()
-            wp_samples = [min(int(round(t * freq)), Ns - 1)
-                          for t in tps_arr - tps_arr[0]]
-
-            # Position bounds
-            for _k in range(1, self.n_wps):
-                cl.extend(cb.lower_q)
-                cu.extend(cb.upper_q)
-
-            # Velocity bounds
-            for _s in range(Ns):
-                cl.extend(cb.lower_dq)
-                cu.extend(cb.upper_dq)
-
-            # Torque bounds (at waypoints)
-            for _k in range(1, self.n_wps):
-                cl.extend(cb.lower_effort)
-                cu.extend(cb.upper_effort)
-
-            return (
-                np.array(cl[:Ns * n_act + Ns * n_act + (self.n_wps - 1) * nv],
-                         dtype=float),
-                np.array(cu[:Ns * n_act + Ns * n_act + (self.n_wps - 1) * nv],
-                         dtype=float),
-            )
-
-        # ── Decision variables ──────────────────────────────────
-        X0 = wps[:, range(1, self.n_wps)]
-        x0 = np.reshape(X0.transpose(), (self.n_joints * (self.n_wps - 1),))
-        n_vars = len(x0)
-
-        lb, ub = self.get_variable_bounds()
-        cl, cu = self.get_constraint_bounds()
-        n_con = len(cl)
-
-        # Ensure the CasADi symbolic model is built (via CasadiBackend)
-        cas_be = self.opt_traj._backend
-        cas_be._ensure_symbolic_model()
-        cmodel = cas_be._cmodel
-        cdata = cas_be._cdata
-        nv = cmodel.nv
-        nq = cmodel.nq
-        n_joints = self.n_joints
-        freq = self.opt_traj.trajectory_config["freq"]
-
-        # Capture references for nested function closures
-        self_ref = self
-
-        # ── 1. Spline Callback ────────────────────────────────────
-        spline_cb = _create_spline_callback()
-
-        X_sym = cs.SX.sym("X", n_vars)
-        # Spline output: concatenated [Q_flattened, V_flattened, A_flattened]
-        # each of shape (Ns, n_joints) → total size = 3 * Ns * n_joints
-        qva_sym = spline_cb(X_sym)
-
-        # Parse spline output dimensions
-        Ns = self.Ns
-        n_act = n_joints
-        qva_total = 3 * Ns * n_act
-        Q_sym = cs.reshape(qva_sym[:Ns * n_act], Ns, n_act)
-        V_sym = cs.reshape(qva_sym[Ns * n_act:2 * Ns * n_act], Ns, n_act)
-        A_sym = cs.reshape(qva_sym[2 * Ns * n_act:3 * Ns * n_act], Ns, n_act)
-
-        # ── 2. Symbolic objective ────────────────────────────────
-        obj_expr = _build_objective_expr(Q_sym, V_sym, A_sym)
-
-        # ── 3. Symbolic constraints ──────────────────────────────
-        cons_expr = _build_constraints_expr(Q_sym, V_sym, A_sym)
-
-        # ── 4. Build constraint bounds matching symbolic structure ──
-        n_con_sym = int(cons_expr.size1())
-        cl_sym, cu_sym = _build_constraint_bounds(Q_sym, V_sym, A_sym)
-        self.opt_traj.logger.info(
-            "CasADi symbolic NLP: %d vars, %d cons",
-            n_vars, n_con_sym,
-        )
-
-        # ── 5. NLP + solve ───────────────────────────────────────
-        nlp = {"x": X_sym, "f": obj_expr, "g": cons_expr}
-        opts = {
-            "ipopt.tol": 1e-3,
-            "ipopt.acceptable_tol": 1e-2,
-            "ipopt.max_iter": 200,
-            "ipopt.print_level": 3,
-            "ipopt.mu_strategy": "adaptive",
-            "print_time": False,
-        }
-        solver = cs.nlpsol("traj_opt", "ipopt", nlp, opts)
-
-        result = solver(x0=x0, lbg=cl_sym, ubg=cu_sym)
-
-        # ── 5. Extract results ───────────────────────────────────
-        x_opt = np.array(result["x"]).flatten()
-
-        wps_X = np.reshape(x_opt, (self.n_wps - 1, self.n_joints))
-        wps_opt = np.vstack((self.wp_init, wps_X)).transpose()
-
-        t_f, p_f, v_f, a_f = self.opt_traj.WP.get_full_config(
-            self.opt_traj.trajectory_config["freq"],
-            self.tps, wps_opt, self.vel_wps, self.acc_wps,
-        )
-        final_waypoint = wps_X[-1, :]
-
-        stats = solver.stats()
-        success = stats["return_status"] in (
-            "Solve_Succeeded", "Solved_To_Acceptable_Level",
-        )
-
-        results = {
-            "success": success,
-            "x_opt": x_opt,
-            "obj_val": float(result["f"]),
-            "status": 0 if success else 1,
-            "status_msg": str(stats["return_status"]),
-            "solve_time": 0.0,
-            "iterations": stats.get("iter_count", 0),
-            "t_f": t_f,
-            "p_f": p_f,
-            "v_f": v_f,
-            "a_f": a_f,
-            "iter_data": {
-                "iterations": list(range(stats.get("iter_count", 0))),
-                "obj_values": [],
-                "solve_time": 0.0,
-                "status": "ok" if success else "failed",
-                "final_waypoint": final_waypoint,
-            },
-        }
-        return success, results
-
     def solve_with_waypoints(self, wps) -> Tuple[bool, Dict[str, Any]]:
         """
         Solve the optimization problem with given initial waypoints.
@@ -968,11 +670,6 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         try:
             # Store initial waypoints for get_initial_guess
             self._initial_wps = wps
-
-            # Check if backend provides solver override
-            backend = self.opt_traj._backend
-            if backend.name == "casadi":
-                return self._solve_with_casadi_backend(wps)
 
             # Create solver with trajectory optimization config
             config = IPOPTConfig.for_trajectory_optimization()
