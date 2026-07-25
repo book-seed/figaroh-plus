@@ -12,29 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Computation backends for robot dynamics.
+"""CasADi symbolic computation backend.
 
-Provides a strategy pattern for regressor construction and IPOPT solver
-creation. Two backends are available:
+CasadiBackend holds the symbolic regressor / RNEA model built via
+``pinocchio.casadi`` and is the sole backend used by the Fourier
+trajectory strategy. It is created automatically when
+``trajectory_type == 'fourier'``; spline trajectories do not need a
+backend.
 
-- ``numerical`` (default): wraps existing ``RegressorBuilder`` +
-  ``cyipopt`` + ``numdifftools``.
-- ``casadi``: uses ``pinocchio.casadi`` for symbolic regressors and
-  ``cs.nlpsol('ipopt', ...)`` for analytical-derivative IPOPT solving.
+Dependencies (optional): ``casadi`` + conda-forge ``pinocchio`` with
+CasADi bindings. Imported lazily so spline users need not install them.
 """
-
-from .base import Backend, BackendType, create_backend
-from .numerical import NumericalBackend
 
 try:
     from .casadi import CasadiBackend
 except ImportError:
     CasadiBackend = None  # type: ignore
 
-__all__ = [
-    "Backend",
-    "BackendType",
-    "NumericalBackend",
-    "CasadiBackend",
-    "create_backend",
-]
+__all__ = ["CasadiBackend"]
