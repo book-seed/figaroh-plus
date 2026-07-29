@@ -13,7 +13,7 @@ base_ref: 755c5cc8a53200be537e84f4751569b3082a06c6
 design_doc: null
 plan: null
 verify_result: pending
-verification_report: docs/superpowers/reports/2026-07-25-sink-backend-into-fourier-strategy-verify.md
+verification_report: docs/superpowers/reports/2026-07-29-sink-backend-into-fourier-strategy-verify.md
 branch_status: handled
 created_at: 2026-07-25
 verified_at: null
