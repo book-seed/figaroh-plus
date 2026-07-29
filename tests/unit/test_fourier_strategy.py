@@ -122,19 +122,19 @@ class TestFourierStrategySolveFlow:
         }
         mock_ctx.robot = mock_robot
 
-        # Run solve -- should populate results (the mock NLP will fail
-        # but the trajectory construction should still execute)
+        # Run solve — must complete without raising and populate results.
+        # Previously this was wrapped in `try/except Exception: pass`, which
+        # swallowed the AttributeError from the non-existent cs.cholesky call
+        # and made the test falsely green while solve() actually crashed.
         with patch(
             "figaroh.backend.casadi.CasadiBackend",
             return_value=mock_backend,
         ):
-            try:
-                strategy.solve(mock_ctx)
-            except Exception:
-                pass
+            strategy.solve(mock_ctx)
 
-        # Check that results were populated even if NLP failed
-        assert 'T_F' in mock_ctx.results
+        # solve() must have populated trajectory results (no swallowed crash)
+        assert len(mock_ctx.results['T_F']) > 0
+        assert len(mock_ctx.results['P_F']) > 0
 
 
 class TestDOptimalObjective:

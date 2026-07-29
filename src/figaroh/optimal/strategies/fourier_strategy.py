@@ -168,12 +168,17 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         n_base = W_b.shape[1]
         J_reg = J + reg_lambda * cs.MX.eye(n_base)
 
-        # D-optimal: obj = -log(det(J_reg))
-        # L = cholesky(J_reg), det(J_reg) = prod(L_ii)^2
-        # log(det(J_reg)) = 2 * sum(log(L_ii))
-        # obj = -log(det(J_reg)) = -2 * sum(log(L_ii))
-        L = cs.cholesky(J_reg)
-        obj = -2 * cs.sum1(cs.log(cs.diag(L)))
+        # D-optimal: obj = -log(det(J_reg)) = -2*sum(log(diag(chol(J_reg)))).
+        # chol() is DM/SX-only (not MX); wrap the chol-based logdet in an SX
+        # Function and call it from the MX graph. CasADi differentiates through
+        # the SX Function automatically — same MX/SX hybrid pattern already
+        # used for the regressor above (W_fun/rnea_fun are SX, called via .map).
+        J_sx = cs.SX.sym("J_reg", n_base, n_base)
+        L_sx = cs.chol(J_sx)
+        logdet_sx = 2 * cs.sum1(cs.log(cs.diag(L_sx)))
+        logdet_fn = cs.Function("logdet", [J_sx], [logdet_sx])
+
+        obj = -logdet_fn(J_reg)
 
         # ── 8. Torque constraints via map("openmp") with friction ──
         rnea_fun = cas_be.rnea_function
@@ -194,8 +199,11 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
                 # Coulomb friction (tanh approximation)
                 tau_raw[jid, :] += fs_coeff * cs.tanh(tanh_alpha_opt * V_full[jid, :])
 
-        # Flatten torque to (Ns * nv,) -- constraint order: per-sample, all joints
-        tau_flat = tau_raw.T.reshape(-1)  # (Ns * nv,)
+        # Flatten torque to (Ns * nv,) -- constraint order: per-sample, all joints.
+        # CasADi reshape needs explicit (rows, cols); column-major flatten of the
+        # (nv, Ns) matrix yields the sample-major order (i*nv+j) that the
+        # constraint loop below indexes via tau_flat[i*nv + act_idxv[j]].
+        tau_flat = cs.reshape(tau_raw, nv * n_samples, 1)
 
         # ── 9. Build constraint vector ─────────────────────────────
         cons_list = []
@@ -334,6 +342,9 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         model = context.robot.model
         act_idxq = context.identif_config.get(
             "act_idxq", list(range(n_act))
+        )
+        act_idxv = context.identif_config.get(
+            "act_idxv", list(range(n_act))
         )
 
         q_upper = np.array([float(model.upperPositionLimit[j])
