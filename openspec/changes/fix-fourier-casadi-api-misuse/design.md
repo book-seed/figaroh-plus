@@ -29,6 +29,8 @@
 
 3. **收紧测试**：`test_solve_populates_results` 去掉 `try/except Exception: pass`，断言 solve 不抛异常且 `T_F/P_F/V_F/A_F` 被填充。e2e `test_solve_produces_results` 作为验收门。
 
+4. **补 `act_idxv` 定义（build 期暴露的同类遗留 bug）**：修复 1-2 后 solve() 首次运行到 line 277 的 `_initialize_coefficients`，暴露 `NameError: act_idxv`——该方法用 `act_idxv[j]` 索引 `velocityLimit` 却只定义了 `act_idxq`。补 `act_idxv = context.identif_config.get("act_idxv", list(range(n_act)))`，对齐父 `solve()` 的定义。属同类"引用未定义符号"残留、同文件单点修复，未触发 hotfix 升级条件（仍单模块、无新接口/架构）。
+
 ## Risks / Trade-offs
 
 - **chol 需 SPD**：`reg_lambda`（默认 1e-6）保证 `J_reg` 正定；若 `reg_lambda=0` 且回归子秩亏，LDL 出现非正枢轴→`sqrt`→NaN→IPOPT 报错。这是正确行为（目标在该点本就未定义），与原设计意图一致，非回归。已有 `test_regularization_ensures_spd` 覆盖。

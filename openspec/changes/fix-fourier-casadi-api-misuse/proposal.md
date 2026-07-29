@@ -1,12 +1,13 @@
 ## Why
 
-`FourierOptimizationStrategy.solve()` 在 D-optimal 目标处崩溃：[fourier_strategy.py:175](src/figaroh/optimal/strategies/fourier_strategy.py#L175) 调用 `cs.cholesky(J_reg)`——CasADi 不存在该函数。导致 [test_fourier_e2e.py::test_solve_produces_results](tests/unit/test_fourier_e2e.py) 当前红（`module 'casadi' has no attribute 'cholesky'`）。这是遗留缺陷（源自 `bca665e`，当年 `symbolic-fourier-trajectory` change 的 verify 未拦住），Fourier 轨迹优化从未真正求解成功过。
+`FourierOptimizationStrategy.solve()` 在 D-optimal 目标处崩溃：[fourier_strategy.py:175](src/figaroh/optimal/strategies/fourier_strategy.py#L175) 调用 `cs.cholesky(J_reg)`——CasADi 不存在该函数。导致 [test_fourier_e2e.py::test_solve_produces_results](tests/unit/test_fourier_e2e.py) 当前红（`module 'casadi' has no attribute 'cholesky'`）。这是遗留缺陷（源自 `bca665e`，当年 `symbolic-fourier-trajectory` change 的 verify 未拦住），Fourier 轨迹优化从未真正求解成功过——solve() 在 line 175 即崩，后续代码路径从未被运行时验证，因此还潜伏着同类"引用未定义符号"的 bug（修复 cholesky 后才暴露，见 What Changes 第 3 条）。
 
 ## What Changes
 
 - 修复 [fourier_strategy.py:175](src/figaroh/optimal/strategies/fourier_strategy.py#L175) 的 `cs.cholesky(J_reg)`：CasADi 无 `cholesky`（正确名 `chol`），且 `chol` 仅支持 DM/SX、不支持 MX，而该 NLP 全程用 MX。改为把 chol-based logdet 目标包进 SX Function（输入 `n_base×n_base` 的 `J_reg`），在 MX 图中调用，CasADi 自动 AD。
 - 修复 [fourier_strategy.py:198](src/figaroh/optimal/strategies/fourier_strategy.py#L198) 的 `tau_raw.T.reshape(-1)`：numpy 单参数写法，CasADi `reshape` 需显式 `(rows, cols)`。改为 `cs.reshape(tau_raw, nv * n_samples, 1)`，列主序展平 `(nv, Ns)` 得 sample-major 序，匹配 [line 216](src/figaroh/optimal/strategies/fourier_strategy.py#L216) 的 `tau_flat[i*nv + j]` 索引。
-- 收紧 [test_fourier_strategy.py](tests/unit/test_fourier_strategy.py) 的 `test_solve_populates_results`：去掉 `try/except Exception: pass` 吞异常，改为断言 solve 成功，消除假阳性。
+- 修复 `_initialize_coefficients` 的 `NameError: act_idxv`（修复前两处后、solve() 首次走到 line 277 才暴露）：该方法用了 `act_idxv[j]` 索引 `velocityLimit` 却只定义了 `act_idxq`。补 `act_idxv = context.identif_config.get("act_idxv", ...)`，对齐父 `solve()` 方法的定义。
+- 收紧 [test_fourier_strategy.py](tests/unit/test_fourier_strategy.py) 的 `test_solve_populates_results`：去掉 `try/except Exception: pass` 吞异常，改为断言 solve 成功且结果被填充，消除假阳性。
 
 ## Capabilities
 
