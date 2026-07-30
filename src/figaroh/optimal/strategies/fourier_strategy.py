@@ -64,8 +64,14 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
             context: BaseOptimalTrajectory instance with robot model
                 and configuration.
         """
-        import casadi as cs
-        from figaroh.backend.casadi import CasadiBackend
+        try:
+            import casadi as cs
+            from figaroh.backend.casadi import CasadiBackend
+        except ImportError as e:
+            raise ImportError(
+                "FourierOptimizationStrategy requires CasADi. "
+                "Install with: pixi add casadi"
+            ) from e
 
         cfg = self._fourier_config
         n_harmonics = cfg["n_harmonics"]

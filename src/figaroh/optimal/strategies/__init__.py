@@ -53,8 +53,8 @@ def create_strategy(trajectory_type: str, **kwargs):
     elif trajectory_type == "fourier":
         if FourierOptimizationStrategy is None:
             raise ImportError(
-                "FourierOptimizationStrategy requires CasADi. "
-                "Install with: pixi add casadi"
+                "FourierOptimizationStrategy could not be imported. "
+                "Ensure its module dependencies are available."
             )
         return FourierOptimizationStrategy(**kwargs)
     else:

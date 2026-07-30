@@ -80,6 +80,16 @@ class TestStrategyFactory:
         with pytest.raises(ValueError, match="Unknown trajectory type"):
             create_strategy("polynomial")
 
+    def test_create_fourier_strategy(self):
+        """Factory returns FourierOptimizationStrategy for 'fourier'."""
+        pytest.importorskip("casadi")
+        from figaroh.optimal.strategies import create_strategy
+        from figaroh.optimal.strategies.fourier_strategy import (
+            FourierOptimizationStrategy
+        )
+        strategy = create_strategy("fourier")
+        assert isinstance(strategy, FourierOptimizationStrategy)
+
 
 class TestSplineStrategy:
     """Test SplineOptimizationStrategy."""

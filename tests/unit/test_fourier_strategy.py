@@ -285,3 +285,35 @@ class TestSymbolicJacobian:
         J_sym_val = np.array(J_fn(q0, v0, a0))
 
         np.testing.assert_allclose(J_sym_val, J_fd, atol=1e-4)
+
+
+class TestFourierStrategyCasadiMissing:
+    """Verify the friendly error when CasADi is unavailable at solve time.
+
+    CasADi is imported lazily inside ``solve()``, so an absent CasADi must
+    surface as an ImportError carrying the install hint, not a raw
+    ModuleNotFoundError deferred to call time.
+    """
+
+    def test_solve_raises_friendly_import_error_without_casadi(self):
+        """solve() raises ImportError with install hint when casadi missing."""
+        import sys
+        from figaroh.optimal.strategies.fourier_strategy import (
+            FourierOptimizationStrategy
+        )
+
+        strategy = FourierOptimizationStrategy()
+        mock_context = MagicMock()
+
+        # Simulate casadi not installed: a ``None`` entry in sys.modules makes
+        # ``import casadi`` raise ImportError ("import of casadi halted; ...").
+        saved = sys.modules.get("casadi")
+        sys.modules["casadi"] = None
+        try:
+            with pytest.raises(ImportError, match="pixi add casadi"):
+                strategy.solve(mock_context)
+        finally:
+            if saved is not None:
+                sys.modules["casadi"] = saved
+            else:
+                sys.modules.pop("casadi", None)

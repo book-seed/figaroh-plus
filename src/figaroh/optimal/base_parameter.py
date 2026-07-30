@@ -58,7 +58,6 @@ class BaseParameterComputer:
             # Generate random trajectory for base parameter computation
             n_wps_r = 100   #TODO 路径点数量（和yaml里的参数有没有关系？？？）
             freq_r = 100    #TODO 和yaml里的参数有没有关系？？？
-            # CB_r = CubicSpline(self.robot, n_wps_r, self.active_joints)
             WP_r = WaypointsGeneration(self.robot, n_wps_r, self.active_joints, self.soft_lim_pool)
             
             # 1. 每个joint在关节位置、速度，加速度限位内均匀生成10个候选点
