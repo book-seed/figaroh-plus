@@ -44,11 +44,9 @@ def create_strategy(trajectory_type: str, **kwargs):
         trajectory_type: ``"spline"`` or ``"fourier"``.
         **kwargs: Strategy-specific keyword arguments.
 
-    Returns:
-        A TrajectoryOptimizationStrategy instance.
+    Returns: A TrajectoryOptimizationStrategy instance.
 
-    Raises:
-        ValueError: If trajectory_type is unknown.
+    Raises:  ValueError: If trajectory_type is unknown.
     """
     if trajectory_type == "spline":
         return SplineOptimizationStrategy(**kwargs)
