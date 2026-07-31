@@ -117,7 +117,7 @@ class CasadiBackend:
     symbolic regressor, replace ad-hoc construction with a module-level shared
     singleton indexed by robot inertia fingerprint (e.g.
     ``get_symbolic_model(robot)``), reused by both fourier and identification.
-    For now, the disk cache (``_cache_key`` + ``~/.figaroh/casadi_cache``)
+    For now, the disk cache (``_cache_key`` + ``_cache_dir()``)
     already collapses rebuild cost to a single ``cs.Function.load`` on cache
     hit, so independent construction is fine and premature sharing is avoided.
     """
@@ -146,7 +146,7 @@ class CasadiBackend:
         1. If running inside a pixi project (pyproject.toml found by walking
            up from ``figaroh.__file__``), cache goes to
            ``<project>/.cache/figaroh/casadi/``.
-        2. Otherwise fallback to XDG-compatible ``~/.cache/figaroh/casadi/``.
+        2. Otherwise fallback to XDG-default ``~/.cache/figaroh/casadi/``.
         """
         import figaroh
 
