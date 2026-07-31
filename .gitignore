@@ -20,3 +20,6 @@ __pycache__/
 
 # pixi environment directory
 .pixi/
+
+# CasADi symbolic model cache (project-local)
+.cache/
