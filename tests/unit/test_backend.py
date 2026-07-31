@@ -6,6 +6,8 @@ and ``ColumnEliminationCallback`` have been removed (change
 backend, created automatically when ``trajectory_type == 'fourier'``.
 """
 
+import os
+
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
@@ -287,3 +289,49 @@ class TestTrajectoryStrategyIntegration:
             expected_keys = {'T_F', 'P_F', 'V_F', 'A_F',
                              'iteration_data', 'final_regressor_shape'}
             assert expected_keys.issubset(traj.results.keys())
+
+
+class TestCacheDir:
+    """Test CasadiBackend._cache_dir() cache path resolution."""
+
+    def test_cache_dir_in_project_env(self, tmp_path):
+        """When pyproject.toml is found, cache goes under .cache/figaroh/casadi/."""
+        from figaroh.backend.casadi import CasadiBackend
+        import figaroh
+
+        # Create a fake pyproject.toml in tmp_path
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[project]\nname = 'test'")
+
+        # Simulate figaroh.__file__ being inside the project
+        fake_init = tmp_path / "src" / "figaroh" / "__init__.py"
+        fake_init.parent.mkdir(parents=True)
+        fake_init.write_text("")
+
+        with patch.object(figaroh, "__file__", str(fake_init)):
+            cache_dir = CasadiBackend._cache_dir()
+
+        expected = str(tmp_path / ".cache" / "figaroh" / "casadi")
+        assert cache_dir == expected
+        assert os.path.isdir(cache_dir)
+
+    def test_cache_dir_fallback_no_pyproject_toml(self, tmp_path):
+        """When no pyproject.toml found, fallback to ~/.cache/figaroh/casadi/."""
+        from figaroh.backend.casadi import CasadiBackend
+        import figaroh
+
+        # tmp_path has no pyproject.toml
+        fake_init = tmp_path / "isolated" / "figaroh" / "__init__.py"
+        fake_init.parent.mkdir(parents=True)
+        fake_init.write_text("")
+
+        with patch.object(figaroh, "__file__", str(fake_init)):
+            cache_dir = CasadiBackend._cache_dir()
+
+        expected = os.path.join(os.path.expanduser("~"), ".cache", "figaroh", "casadi")
+        assert cache_dir == expected
+
+    def test_cache_version_still_in_cache_key(self):
+        """_CACHE_VERSION is unchanged and still part of cache filename logic."""
+        from figaroh.backend.casadi import CasadiBackend
+        assert CasadiBackend._CACHE_VERSION == "v2"

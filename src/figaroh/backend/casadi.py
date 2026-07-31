@@ -140,8 +140,32 @@ class CasadiBackend:
 
     @staticmethod
     def _cache_dir() -> str:
-        """Return the cache directory, creating it if necessary."""
-        d = os.path.join(os.path.expanduser("~"), ".figaroh", "casadi_cache")
+        """Return the cache directory, creating it if necessary.
+
+        Resolution order:
+        1. If running inside a pixi project (pyproject.toml found by walking
+           up from ``figaroh.__file__``), cache goes to
+           ``<project>/.cache/figaroh/casadi/``.
+        2. Otherwise fallback to XDG-compatible ``~/.cache/figaroh/casadi/``.
+        """
+        import figaroh
+
+        # Walk up from figaroh's location looking for pyproject.toml
+        current = os.path.dirname(os.path.abspath(figaroh.__file__))
+        while True:
+            if os.path.isfile(os.path.join(current, "pyproject.toml")):
+                # Project root found — cache inside project
+                d = os.path.join(current, ".cache", "figaroh", "casadi")
+                break
+            parent = os.path.dirname(current)
+            if parent == current:
+                # Filesystem root reached — no project, use XDG fallback
+                d = os.path.join(
+                    os.path.expanduser("~"), ".cache", "figaroh", "casadi"
+                )
+                break
+            current = parent
+
         os.makedirs(d, exist_ok=True)
         return d
 
