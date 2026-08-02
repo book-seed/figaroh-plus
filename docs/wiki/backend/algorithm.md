@@ -13,7 +13,7 @@
 - `W_expr = cpin.computeJointTorqueRegressor(cmodel, cdata, q, v, a)` —— Pinocchio C++ 层对 $\partial\mathrm{rnea}/\partial\pi$ 的高效解析实现，输入 SX 符号变量，返回 SX 表达式 $H$。
 - `tau_expr = cpin.rnea(cmodel, cdata, q, v, a)` —— 力矩 $\tau$ 本身的 SX 表达式。
 
-二者封装为 `cs.Function`（缓存到磁盘），成为外层 NLP 可调用的符号算子。
+二者封装为 `cs.Function`，成为外层 NLP 可调用的符号算子。
 
 ---
 
@@ -23,13 +23,13 @@
 
 Fourier NLP 的结构是「单步动力学 × $N$ 采样点 + 全局目标」：
 
-- **单步动力学**（回归子、RNEA、logdet）输入输出固定、计算密集、需跨 `solve()` 复用 → 用 **SX**。
+- **单步动力学**（回归子、RNEA、logdet）输入输出固定、计算密集 → 用 **SX**。
 - **轨迹层**（Fourier 系数 $Z$ → $N$ 点 $Q/V/A$ → 信息矩阵 → 目标）决策变量多、需对 $Z$ 自动微分、构成 NLP → 用 **MX**。
 
 ### 2.2 内层 SX Function
 
 ```
-# 单步，输入输出维度固定，构建一次、缓存到磁盘、跨 solve 复用
+# 单步，输入输出维度固定，构建一次、跨 solve 复用
 cs_q = cs.SX.sym("q", nq); cs_v = cs.SX.sym("v", nv); cs_a = cs.SX.sym("a", nv)
 
 W_expr   = cpin.computeJointTorqueRegressor(cmodel, cdata, cs_q, cs_v, cs_a)   # (nv, 10*nv)
@@ -41,9 +41,8 @@ rnea_fun = cs.Function("rnea", [cs_q, cs_v, cs_a], [tau_expr])  # SX Function
 
 **为什么用 SX：**
 
-1. **可缓存**——SX Function 的表达式树确定，可 `save("/.../foo.casadi")` 落盘、下次 `cs.Function.load` 直接复用；MX 依赖外部输入，不便整树序列化。
-2. **单步动力学**——SX 适合固定规模、无循环展开的局部分支；$n_v\times 10n_v$ 规模适中，SX 的稀疏性已足够。
-3. **`cs.chol` 支持**——`cs.chol` 仅接受 DM/SX，不支持 MX（见 §2.5 logdet）。
+1. **单步动力学**——SX 适合固定规模、无循环展开的局部分支；$n_v\times 10n_v$ 规模适中，SX 的稀疏性已足够。
+2. **`cs.chol` 支持**——`cs.chol` 仅接受 DM/SX，不支持 MX（见 §2.5 logdet）。
 
 ### 2.3 外层 MX
 
@@ -98,27 +97,6 @@ function _ensure_symbolic_model(self):
     if self._cmodel is not None:           # 已构造，幂等
         return
     _lazy_import()                          # 首次导入 cs / cpin
-    key = _cache_key(self._robot)
-    cache_file = f"~/.figaroh/casadi_cache/{key}_regressor_{_CACHE_VERSION}.casadi"
-
-    try:                                    # ── 命中路径 ──
-        self._W_fun = cs.Function.load(cache_file)
-        self._cmodel = cpin.Model(self._robot.model)    # 重建 cmodel/cdata
-        self._cdata  = self._cmodel.createData()        #   （load 不含 pinocchio 模型）
-        rnea_file = cache_file.replace("regressor", "rnea")
-        try:
-            self._rnea_fun = cs.Function.load(rnea_file)
-        except:
-            # 伴随损坏：就地重建 rnea，不 save（下次仍 load 失败再重建）
-            cs_q = cs.SX.sym("q", self._cmodel.nq)
-            cs_v = cs.SX.sym("v", self._cmodel.nv)
-            cs_a = cs.SX.sym("a", self._cmodel.nv)
-            tau = cpin.rnea(self._cmodel, self._cdata, cs_q, cs_v, cs_a)
-            self._rnea_fun = cs.Function("rnea", [cs_q,cs_v,cs_a], [tau])
-        return
-    except:                                  # ── 未命中路径 ──
-        pass
-
     self._cmodel = cpin.Model(self._robot.model)
     self._cdata  = self._cmodel.createData()
     cs_q = cs.SX.sym("q", self._cmodel.nq)
@@ -128,77 +106,13 @@ function _ensure_symbolic_model(self):
     tau_expr = cpin.rnea(self._cmodel, self._cdata, cs_q, cs_v, cs_a)
     self._W_fun    = cs.Function("W",   [cs_q,cs_v,cs_a], [W_expr])
     self._rnea_fun = cs.Function("rnea", [cs_q,cs_v,cs_a], [tau_expr])
-
-    try:                                     # 落盘（失败非致命）
-        self._W_fun.save(cache_file)
-        self._rnea_fun.save(cache_file.replace("regressor", "rnea"))
-    except: pass
 ```
 
 ---
 
-## 3. 磁盘缓存
+## 3. 惰性初始化与惰性导入
 
-### 3.1 缓存键 `_cache_key`
-
-```
-function _cache_key(robot):              # @staticmethod
-    m = robot.model
-    parts = []
-    for i in m.inertias:                 # 每个连杆的惯性
-        mass = float(i.mass) if abs(float(i.mass)) > 1e-9 else 0.0   # 零质量归零
-        lever = [float(x) for x in i.lever]                            # 质心 (3)
-        inertia_flat = [float(x) for row in i.inertia for x in row]   # 完整 3×3 张量扁平化
-        parts.extend([mass] + lever + inertia_flat)                   # 1+3+9 = 13 per body
-    fingerprint = f"{m.name}_{m.nq}_{m.nv}_" + "_".join(f"{v:.10f}" for v in parts)
-    h = sha256(fingerprint.encode()).hexdigest()[:16]
-    return f"{m.name}_{h}"
-```
-
-指纹串结构：`<name>_<nq>_<nv>_<mass_0>:.10f>_<lever_0...>_<inertia_0...>_<mass_1>...`，SHA256 取前 16 位。
-
-> ⚠️ **spec 偏离**：[spec](../../../openspec/specs/symbolic-casadi-pipeline/spec.md) 要求指纹覆盖关节结构（joint short-name / idx_q / idx_v）且用 12 位小数。实际代码用 10 位、不含关节结构。
-
-### 3.2 缓存文件与失效
-
-| 项 | 值 |
-|----|----|
-| 目录 | `~/.figaroh/casadi_cache/` |
-| 回归子 | `<key>_regressor_<_CACHE_VERSION>.casadi` |
-| RNEA | `<key>_rnea_<_CACHE_VERSION>.casadi` |
-| 版本标签 | `_CACHE_VERSION = "v2"` |
-
-`_CACHE_VERSION` 拼进文件名。改符号模型生成逻辑时 bump（如 `v2`→`v3`），旧文件名不匹配即自动失效。
-
-### 3.3 缓存决策伪代码
-
-```
-key = _cache_key(robot)
-file = f"{_cache_dir()}/{key}_regressor_v2.casadi"
-
-if exists(file):                          # 命中
-    W_fun = cs.Function.load(file)        # O(~0.03s)
-    cmodel = cpin.Model(robot.model); cdata = cmodel.createData()
-    rnea_file = file.replace("regressor","rnea")
-    if exists(rnea_file) and load_ok:
-        rnea_fun = cs.Function.load(rnea_file)
-    else:                                  # 伴随损坏/缺失
-        rnea_fun = rebuild_rnea(cmodel, cdata)   # 就地重建，不 save
-else:                                     # 未命中
-    cmodel = cpin.Model(robot.model); cdata = cmodel.createData()
-    W_fun, rnea_fun = build_from_scratch(cmodel, cdata)   # O(~0.05s, C++ native)
-    W_fun.save(file); rnea_fun.save(file.replace("regressor","rnea"))
-```
-
-### 3.4 指纹不含关节结构的后果
-
-指纹仅由 `inertias`（mass/lever/inertia 张量）决定。若**只改关节类型或关节索引**而惯性数值不变（如把 revolute 换成 prismatic、或重排关节顺序但质量分布相同），指纹不变 → 命中旧缓存 → 返回与当前关节结构**不匹配**的符号模型，可能静默产生错误结果。spec 明确要求覆盖关节结构以杜绝此风险，当前代码未实现。
-
----
-
-## 4. 惰性初始化与惰性导入
-
-**惰性初始化**：`__init__` 仅存 `self._robot`，`_cmodel/_W_fun/_rnea_fun = None`。符号模型在首次访问 `regressor_function` / `rnea_function` 属性（或外部直接调 `_ensure_symbolic_model()`）时才构建，命中缓存则仅 `load`。这使 spline 用户（不需要后端）零开销。
+**惰性初始化**：`__init__` 仅存 `self._robot`，`_cmodel/_W_fun/_rnea_fun = None`。符号模型在首次访问 `regressor_function` / `rnea_function` 属性（或外部直接调 `_ensure_symbolic_model()`）时才构建。`cpin.computeJointTorqueRegressor` 和 `cpin.rnea` 是 C++ 原生实现，`cs.Function` 构造开销在毫秒级，无需磁盘缓存。这使 spline 用户（不需要后端）零开销。
 
 **惰性导入** `_lazy_import()`：模块级 `cpin`、`cs` 初始为 `None`，分两条独立 `try/except`：
 
@@ -209,12 +123,11 @@ else:                                     # 未命中
 
 ---
 
-## 5. 复杂度
+## 4. 复杂度
 
 | 操作 | 复杂度 / 耗时 | 说明 |
 |------|--------------|------|
-| 首次构建（未命中） | $O(\text{C++ native})\approx 0.05\,\text{s}$ | `computeJointTorqueRegressor` 为 Pinocchio C++ 解析实现 |
-| 缓存命中 | $O(\text{load})\approx 0.03\,\text{s}$ | `cs.Function.load` 反序列化 + 重建 cmodel/cdata |
+| 符号模型构建 | $O(\text{C++ native})\approx 0.05\,\text{s}$ | `computeJointTorqueRegressor` 为 Pinocchio C++ 解析实现，`cs.Function` 构造为毫秒级 |
 | `.map(N,"openmp")` 求值 | $O(N/\text{cores})$ | $N$ 采样点并行，SX Function 单步固定规模 |
 | 外层 MX AD | 与 $N\cdot n_v$ 成正比 | reverse-mode，输出少输入多时高效 |
 

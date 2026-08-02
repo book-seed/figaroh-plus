@@ -82,9 +82,8 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         freq = cfg.get("fourier_frequency")
 
         # CasadiBackend is owned by the Fourier strategy (the sole consumer
-        # of the symbolic model). Construction is cheap: symbolics are built
-        # lazily and disk-cached per robot inertia fingerprint, so rebuilding
-        # per solve only costs a `cs.Function.load` on cache hit.
+        # of the symbolic model). Symbolics are built lazily on first access;
+        # construction is cheap enough to repeat per solve.
         cas_be = CasadiBackend(robot=context.robot)
         cas_be._ensure_symbolic_model()
         cmodel = cas_be._cmodel
@@ -132,10 +131,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
 
                 Q_col[j, :] += ak * sin_kwt + bk * cos_kwt
                 V_col[j, :] += ak * k_omega * cos_kwt - bk * k_omega * sin_kwt
-                A_col[j, :] += (
-                    -ak * k_omega**2 * sin_kwt
-                    - bk * k_omega**2 * cos_kwt
-                )
+                A_col[j, :] += (-ak * k_omega**2 * sin_kwt - bk * k_omega**2 * cos_kwt)
 
         # ── 5. Build full joint-space matrices (nq/nv, n_samples) ─
         Q_full = cs.MX.zeros(nq, n_samples)

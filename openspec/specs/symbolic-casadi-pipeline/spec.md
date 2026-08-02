@@ -12,32 +12,16 @@ The system SHALL construct a fully symbolic robot model using `pinocchio.casadi.
 - **WHEN** a robot with a valid URDF is loaded
 - **THEN** `cpin.Model(robot.model)` SHALL produce a CasADi symbolic model
 - **AND** `cmodel.createData()` SHALL allocate symbolic data structures
-- **AND** both SHALL be cached to disk at `~/.figaroh/casadi_cache/` for subsequent reuse
-
-### Requirement: Cache fingerprint covers full inertial parameters
-
-The system SHALL compute a cache fingerprint that covers ALL inertial parameters and joint structure, using SHA256 hash of: model name, nq, nv, each body's mass (12 decimal places), center-of-mass lever arm coordinates (12dp), inertia tensor diagonal entries (12dp), and each joint's short-name, idx_q, and idx_v. Any modification to the URDF (mass, COM, inertia, joint type, or joint index) SHALL produce a different fingerprint, causing automatic cache invalidation and rebuild.
-
-#### Scenario: URDF parameter change invalidates cache
-
-- **WHEN** the URDF is modified (e.g., a link's mass or COM is changed)
-- **THEN** the cache fingerprint SHALL differ from the previous value
-- **AND** the cached symbolic functions SHALL be rebuilt from the updated model
-
-#### Scenario: URDF unchanged reuses cache
-
-- **WHEN** the URDF is identical to a previously cached version
-- **THEN** the cached symbolic functions SHALL be loaded from disk without rebuild
 
 ### Requirement: SX/MX hybrid architecture
 
-The system SHALL use a hybrid SX/MX architecture: inner-layer single-step dynamics functions (regressor and RNEA) SHALL be built and cached as CasADi SX Functions; outer-layer trajectory optimization SHALL use CasADi MX symbols for Fourier coefficients and construct the NLP graph by calling inner SX Functions via `cs.Function.map(N_s, "openmp")`. Gradient computation SHALL use MX reverse-mode automatic differentiation for efficient many-input-to-few-output Jacobians.
+The system SHALL use a hybrid SX/MX architecture: inner-layer single-step dynamics functions (regressor and RNEA) SHALL be built as CasADi SX Functions; outer-layer trajectory optimization SHALL use CasADi MX symbols for Fourier coefficients and construct the NLP graph by calling inner SX Functions via `cs.Function.map(N_s, "openmp")`. Gradient computation SHALL use MX reverse-mode automatic differentiation for efficient many-input-to-few-output Jacobians.
 
-#### Scenario: SX inner functions are cached
+#### Scenario: SX inner functions
 
 - **WHEN** `CasadiBackend` constructs symbolic dynamics functions
-- **THEN** `regressor_function` SHALL be an SX `cs.Function(q,v,a) → W(nv, n_param)` cached to disk
-- **AND** `rnea_function` SHALL be an SX `cs.Function(q,v,a) → τ(nv)` cached to disk
+- **THEN** `regressor_function` SHALL be an SX `cs.Function(q,v,a) → W(nv, n_param)`
+- **AND** `rnea_function` SHALL be an SX `cs.Function(q,v,a) → τ(nv)`
 - **AND** both SHALL be accessible via `CasadiBackend` property interfaces
 
 #### Scenario: MX outer layer calls SX via map

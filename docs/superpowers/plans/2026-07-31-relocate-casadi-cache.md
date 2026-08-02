@@ -2,6 +2,7 @@
 change: relocate-casadi-cache-to-pixi-env
 design-doc: openspec/changes/relocate-casadi-cache-to-pixi-env/design.md
 base-ref: 1984006feb753a1a8d1c4d6459808f99dfcb3209
+archived-with: 2026-07-31-relocate-casadi-cache-to-pixi-env
 ---
 
 # CasADi 缓存路径迁移至工程 .cache 目录 实施计划
@@ -21,6 +22,7 @@ base-ref: 1984006feb753a1a8d1c4d6459808f99dfcb3209
 - 工程根定位不依赖 git 二进制，纯 Python 实现
 - 非工程环境 fallback 路径必须可用
 
+archived-with: 2026-07-31-relocate-casadi-cache-to-pixi-env
 ---
 
 ## 文件结构
@@ -32,6 +34,7 @@ base-ref: 1984006feb753a1a8d1c4d6459808f99dfcb3209
 | `tests/unit/test_backend.py` | 修改 | 新增 `TestCacheDir` 测试类，覆盖工程路径和 fallback 路径 |
 | `openspec/changes/relocate-casadi-cache-to-pixi-env/specs/symbolic-casadi-pipeline/spec.md` | 新建 | Delta spec：MODIFIED "Symbolic model construction" scenario 的缓存路径 THEN 子句 |
 
+archived-with: 2026-07-31-relocate-casadi-cache-to-pixi-env
 ---
 
 ### Task 1: 修改 `_cache_dir()` 实现工程感知缓存路径
@@ -189,6 +192,7 @@ mechanisms unchanged.
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
+archived-with: 2026-07-31-relocate-casadi-cache-to-pixi-env
 ---
 
 ### Task 2: 在 .gitignore 中忽略 `.cache/`
@@ -244,6 +248,7 @@ git commit -m "chore: add .cache/ to gitignore for project-local casadi cache
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
+archived-with: 2026-07-31-relocate-casadi-cache-to-pixi-env
 ---
 
 ### Task 3: 编写 delta spec
@@ -298,6 +303,7 @@ git commit -m "spec: delta spec for casadi cache path relocation
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
+archived-with: 2026-07-31-relocate-casadi-cache-to-pixi-env
 ---
 
 ## 自审清单

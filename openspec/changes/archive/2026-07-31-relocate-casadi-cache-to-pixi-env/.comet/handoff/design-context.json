@@ -1,0 +1,13 @@
+{
+  "change": "relocate-casadi-cache-to-pixi-env",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "754f8c385aeabb562b992917b8e464c9ef2598ad211e588e6706720f8612611d",
+  "files": [
+    { "path": "openspec/changes/relocate-casadi-cache-to-pixi-env/proposal.md", "sha256": "8a2efc8a7057a52a891e357d13ddc9a295372ca029ad544c3586a47251e4f4da" },
+    { "path": "openspec/changes/relocate-casadi-cache-to-pixi-env/design.md", "sha256": "8caf9080d290130cbe8919a835a209c4c7ddefe4d0bac1788e0efbe21e6f65db" },
+    { "path": "openspec/changes/relocate-casadi-cache-to-pixi-env/tasks.md", "sha256": "14b89e8943a1d36fa8422a8a0529738ede3e3dc488941459ba87f003b8a73c85" }
+  ]
+}

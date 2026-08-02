@@ -28,7 +28,6 @@ Lazy import pattern: ``pinocchio.casadi`` and ``casadi`` are imported only when
 
 from __future__ import annotations
 from typing import Any
-import os
 
 import numpy as np
 
@@ -117,14 +116,9 @@ class CasadiBackend:
     symbolic regressor, replace ad-hoc construction with a module-level shared
     singleton indexed by robot inertia fingerprint (e.g.
     ``get_symbolic_model(robot)``), reused by both fourier and identification.
-    For now, the disk cache (``_cache_key`` + ``_cache_dir()``)
-    already collapses rebuild cost to a single ``cs.Function.load`` on cache
-    hit, so independent construction is fine and premature sharing is avoided.
+    For now, symbolic model construction is cheap enough that independent
+    construction per solve is fine.
     """
-
-    # Version tag appended to cache keys — bump when the symbolic
-    # model generation logic changes so stale caches are invalidated.
-    _CACHE_VERSION = "v2"
 
     def __init__(self, robot: Any):
         """Initialise the CasADi backend.
@@ -138,112 +132,32 @@ class CasadiBackend:
         self._W_fun = None  # cs.Function: (q, v, a) -> W
         self._rnea_fun = None  # cs.Function: (q, v, a) -> tau
 
-    @staticmethod
-    def _cache_dir() -> str:
-        """Return the cache directory, creating it if necessary.
-
-        Resolution order:
-        1. If running inside a pixi project (pyproject.toml found by walking
-           up from ``figaroh.__file__``), cache goes to
-           ``<project>/.cache/figaroh/casadi/``.
-        2. Otherwise fallback to XDG-default ``~/.cache/figaroh/casadi/``.
-        """
-        import figaroh
-
-        # Walk up from figaroh's location looking for pyproject.toml
-        current = os.path.dirname(os.path.abspath(figaroh.__file__))
-        while True:
-            if os.path.isfile(os.path.join(current, "pyproject.toml")):
-                # Project root found — cache inside project
-                d = os.path.join(current, ".cache", "figaroh", "casadi")
-                break
-            parent = os.path.dirname(current)
-            if parent == current:
-                # Filesystem root reached — no project, use XDG fallback
-                d = os.path.join(
-                    os.path.expanduser("~"), ".cache", "figaroh", "casadi"
-                )
-                break
-            current = parent
-
-        os.makedirs(d, exist_ok=True)
-        return d
-
-    @staticmethod
-    def _cache_key(robot) -> str:
-        """Build a deterministic cache key from robot model inertial parameters."""
-        import hashlib
-        m = robot.model
-        # Fingerprint from all inertial parameters (mass, inertia, com)
-        inertia_parts = []
-        for i in m.inertias:
-            mass = float(i.mass) if abs(float(i.mass)) > 1e-9 else 0.0
-            lever = [float(x) for x in i.lever]
-            inertia_flat = [float(x) for row in i.inertia for x in row]
-            inertia_parts.extend([mass] + lever + inertia_flat)
-        fingerprint = f"{m.name}_{m.nq}_{m.nv}_" + "_".join(
-            f"{v:.10f}" for v in inertia_parts
-        )
-        h = hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
-        return f"{m.name}_{h}"
-
     def _ensure_symbolic_model(self):
-        """Build (or load from cache) the CasADi symbolic model."""
+        """Build the CasADi symbolic model.
+
+        Constructs ``pinocchio.casadi`` symbolic model and data structures,
+        then builds the regressor and RNEA CasADi SX Functions.  Idempotent:
+        subsequent calls return immediately.
+        """
         if self._cmodel is not None:
             return
 
         _lazy_import()
 
-        key = self._cache_key(self._robot)
-        cache_file = os.path.join(
-            self._cache_dir(),
-            f"{key}_regressor_{self._CACHE_VERSION}.casadi",
-        )
-
-        # ── Try loading from cache ────────────────────────────────
-        try:
-            self._W_fun = cs.Function.load(cache_file)
-            # Rebuild pinocchio model (needed for cdata, nv, nq, etc.)
-            self._cmodel = cpin.Model(self._robot.model)
-            self._cdata = self._cmodel.createData()
-            # Try loading rnea function from companion cache file
-            rnea_cache_file = cache_file.replace("regressor", "rnea")
-            try:
-                self._rnea_fun = cs.Function.load(rnea_cache_file)
-            except Exception:
-                # Rebuild rnea from the symbolic model
-                cs_q = cs.SX.sym("q", self._cmodel.nq)
-                cs_v = cs.SX.sym("v", self._cmodel.nv)
-                cs_a = cs.SX.sym("a", self._cmodel.nv)
-                tau_expr = cpin.rnea(self._cmodel, self._cdata, cs_q, cs_v, cs_a)
-                self._rnea_fun = cs.Function("rnea", [cs_q, cs_v, cs_a], [tau_expr])
-            return
-        except Exception:
-            pass  # cache miss — build from scratch
-
-        # ── Build symbolic model ──────────────────────────────────
         self._cmodel = cpin.Model(self._robot.model)
         self._cdata = self._cmodel.createData()
 
         cs_q = cs.SX.sym("q", self._cmodel.nq)
         cs_v = cs.SX.sym("v", self._cmodel.nv)
         cs_a = cs.SX.sym("a", self._cmodel.nv)
+
         W_expr = cpin.computeJointTorqueRegressor(
             self._cmodel, self._cdata, cs_q, cs_v, cs_a
         )
         self._W_fun = cs.Function("W", [cs_q, cs_v, cs_a], [W_expr])
 
-        # Build symbolic RNEA function
         tau_expr = cpin.rnea(self._cmodel, self._cdata, cs_q, cs_v, cs_a)
         self._rnea_fun = cs.Function("rnea", [cs_q, cs_v, cs_a], [tau_expr])
-
-        # ── Save to cache ─────────────────────────────────────────
-        try:
-            self._W_fun.save(cache_file)
-            rnea_cache_file = cache_file.replace("regressor", "rnea")
-            self._rnea_fun.save(rnea_cache_file)
-        except Exception:
-            pass  # non-fatal — cache is an optimisation
 
     @property
     def regressor_function(self):
