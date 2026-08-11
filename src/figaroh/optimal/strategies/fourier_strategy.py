@@ -36,6 +36,61 @@ _FOURIER_DEFAULTS = {
 }
 
 
+def _compute_regressor_diagnostics(W_b: np.ndarray, n_samples: int) -> dict:
+    """Compute condition number and FIM eigenvalue spectrum from W_b.
+
+    Performs column normalization before computing the condition
+    number so the result is invariant to physical-unit choices
+    (e.g. kg·m² vs g·cm²).
+
+    Args:
+        W_b: Base regressor matrix, shape ``(N_s * nv, n_base)``.
+        n_samples: Number of time samples (*N_s*), used for
+                   per-sample FIM normalisation.
+
+    Returns:
+        Dict with keys ``condition_number`` (float),
+        ``d_optimal_objective`` (float), and ``fim_eigenvalues``
+        (dict with ``min``, ``max``, ``ratio``, ``spectrum``).
+    """
+    n_base = W_b.shape[1]
+
+    # Column normalization — makes condition number invariant to
+    # physical-unit choices (mass in kg vs g, inertia in kg·m² vs
+    # g·cm²).  See docs/wiki/algorithms/条件数与D-最优激励轨迹.md §5.1.
+    col_norms = np.linalg.norm(W_b, axis=0)
+    col_norms[col_norms < 1e-12] = 1.0  # guard against zero columns
+    W_tilde = W_b / col_norms[np.newaxis, :]
+
+    # Condition number of the normalised regressor
+    kappa = float(np.linalg.cond(W_tilde))
+
+    # Per-sample Fisher Information Matrix and eigenvalue spectrum
+    FIM = (W_tilde.T @ W_tilde) / n_samples
+    FIM = 0.5 * (FIM + FIM.T)  # enforce symmetry for eigvalsh
+    eigvals = np.linalg.eigvalsh(FIM)
+    lambda_min = float(eigvals[0])
+    lambda_max = float(eigvals[-1])
+    ratio = float(lambda_max / lambda_min) if lambda_min > 1e-14 else np.inf
+
+    # D-optimal logdet on the regularised FIM (mirrors NLP)
+    reg = 1e-6  # same value as _FOURIER_DEFAULTS["reg_lambda"]
+    FIM_reg = FIM + reg * np.eye(n_base)
+    sign, logdet = np.linalg.slogdet(FIM_reg)
+    d_opt = float(-logdet) if sign > 0 else float(np.inf)
+
+    return {
+        "condition_number": kappa,
+        "d_optimal_objective": d_opt,
+        "fim_eigenvalues": {
+            "min": lambda_min,
+            "max": lambda_max,
+            "ratio": ratio,
+            "spectrum": eigvals.tolist(),
+        },
+    }
+
+
 class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
     """Fourier series trajectory optimization via CasADi symbolic NLP.
 
@@ -308,7 +363,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
 
         # ── 17. Post-optimization diagnostics ────────────────────
         W_b_diag = context._stack_base_regressors(q_opt, v_opt, a_opt)
-        diagnostics = context._compute_regressor_diagnostics(
+        diagnostics = _compute_regressor_diagnostics(
             W_b_diag, n_samples=Ns
         )
 
