@@ -126,13 +126,16 @@ SOCP 之外，`Detmax` 用贪心 add/remove 交换：随机初始化子集 → �
 function build_fourier_nlp(Z, cfg, idx_b, cas_be):
     cas_be._ensure_symbolic_model()
     nq, nv = cas_be._cmodel.nq, cas_be._cmodel.nv
-    omega = cfg.fourier_frequency or 1.0 ; T = 2*pi
+    freq = cfg.fourier_frequency
+    omega = freq if freq is not None else 2*pi/(t_s*(n_wps-1))
+    T = 2*pi/omega
     t = MX(linspace(0, T, cfg.n_samples))
-    # 1) Fourier 系数 -> Q/V/A (解析导数, 列主序 MX)
+    # 1) Fourier 系数 -> Q/V/A (速度参数化, 列主序 MX)
     Z_mat = reshape(Z, n_act, 1+2*n_harmonics)
-    for j: Q[j,:] = a0 + Σ ak sin(kωt) + bk cos(kωt)
-           V[j,:] = Σ ak kω cos(kωt) - bk kω sin(kωt)
-           A[j,:] = Σ -ak (kω)² sin - bk (kω)² cos
+    for j: # a0 = Z_mat[j,0] (均值位置); ak,bk = 速度 sin/cos 幅值
+           V[j,:] = Σ ak sin(kωt) + bk cos(kωt)
+           Q[j,:] = a0 + Σ -ak/(kω) cos(kωt) + bk/(kω) sin(kωt)
+           A[j,:] = Σ ak·kω cos(kωt) - bk·kω sin(kωt)
     # 2) 散布到全关节
     Q_full/V_full/A_full = scatter(Q,V,A, act_idxq, act_idxv, nq, nv)
     # 3) 回归子并行求值

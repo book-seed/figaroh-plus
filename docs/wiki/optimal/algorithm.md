@@ -22,6 +22,8 @@ $$
 
 决策变量为 Fourier 系数扁平向量 $Z\in\mathbb{R}^{n_{\text{act}}(2N_h+1)}$（MX 符号 `cs.MX.sym("coeffs", n_vars)`）。每关节 $N_h$ 次谐波，系数布局 $[a_0,\, a_1,b_1,\, \dots,\, a_{N_h},b_{N_h}]$。
 
+**速度参数化**：$a_k, b_k$ 是**速度**谐波幅值（非位置）。$a_0$ 为均值位置。速度无 DC 分量（等价零均值），保证周期性。
+
 ```python
 Z = cs.MX.sym("coeffs", n_act * (1 + 2*n_harmonics))
 Z_mat = cs.reshape(Z, n_act, 1 + 2*n_harmonics)   # 列主序！
@@ -29,27 +31,37 @@ Z_mat = cs.reshape(Z, n_act, 1 + 2*n_harmonics)   # 列主序！
 
 > ⚠️ **列主序**：CasADi 矩阵列主序（Fortran）存储，故 `Z_mat[j,k] = Z[j + k·n_act]`。而 numpy `x0.reshape(n_act, n_coeffs)`（行主序）满足 `Z_opt[j,k] = x[j·n_coeffs + k]`。`_initialize_coefficients` 与结果提取均用 numpy 行主序，与 NLP 内 CasADi 列主序**索引语义不一致**（见 [code gotcha](code.md)）。
 
-### 1.3 Q / V / A 解析公式（为何不用 `cs.gradient`）
+### 1.3 Q / V / A 解析公式（速度参数化，为何不用 `cs.gradient`）
 
-轨迹（[utils/fourier_trajectory](../../../src/figaroh/utils/fourier_trajectory.py) 的符号化）：
-
-$$
-q_j(t) = a_{0,j} + \sum_{k=1}^{N_h}\big[a_{k,j}\sin(k\omega t) + b_{k,j}\cos(k\omega t)\big]
-$$
-
-对 $t$ 解析求导：
+轨迹（[utils/fourier_trajectory](../../../src/figaroh/utils/fourier_trajectory.py) 的符号化）采用**速度参数化**以避免 $(k\omega)^2$ 加速度放大导致的数值病态：
 
 $$
-\dot q_j(t) = \sum_{k=1}^{N_h}\big[a_{k,j}(k\omega)\cos(k\omega t) - b_{k,j}(k\omega)\sin(k\omega t)\big]
+\dot q_j(t) = \sum_{k=1}^{N_h}\big[a_{k,j}\sin(k\omega t) + b_{k,j}\cos(k\omega t)\big]
 $$
 
+位置通过解析积分得到（$a_{0,j}$ 为均值位置）：
+
 $$
-\ddot q_j(t) = \sum_{k=1}^{N_h}\big[-a_{k,j}(k\omega)^2\sin(k\omega t) - b_{k,j}(k\omega)^2\cos(k\omega t)\big]
+q_j(t) = a_{0,j} + \int_0^t \dot q_j(\tau)\,d\tau
+       = a_{0,j} + \sum_{k=1}^{N_h}\Big[-\frac{a_{k,j}}{k\omega}\cos(k\omega t)
+                                          + \frac{b_{k,j}}{k\omega}\sin(k\omega t)\Big]
 $$
 
-**为何手推而非 `cs.gradient`**：$q(t;Z)$ 本就是 $\sin/\cos$ 的闭式和，其导数是初等函数，已知无需再微分。若用 `cs.gradient(q, t)` 在 MX 图上再构造一层自动微分图，会 (1) 冗余放大表达式图、(2) 重新推导平凡已知量、(3) 使 `.map("openmp")` 的输入 $q,v,a$ 不再是 $Z$ 的紧凑显式表达式。手写闭式让 $Q,V,A$ 成为 $Z$ 的三个紧凑 MX 表达式，直接喂入 `W_fun.map`。
+加速度通过解析求导得到：
 
-> ⚠️ `fourier_frequency=None` 时 $\omega=1.0$、$T=2\pi$，**与 spec 期望 $\omega=2\pi/T_{\text{traj}}$ 不符**（见 [code gotcha](code.md)）。时间向量 $t=\texttt{linspace}(0,T,N)$。
+$$
+\ddot q_j(t) = \frac{d}{dt}\dot q_j(t)
+             = \sum_{k=1}^{N_h}\big[a_{k,j}(k\omega)\cos(k\omega t)
+                               - b_{k,j}(k\omega)\sin(k\omega t)\big]
+$$
+
+**相比位置参数化（$q$ 的系数为位置幅值）的优势**：加速度幅值 $\propto k\omega$ 而非 $(k\omega)^2$，使各谐波对 IPOPT 梯度的贡献更均衡，避免高频分量在优化中"失活"。
+
+**周期性条件**：$T = 2\pi/\omega$ 时 $\dot q(0)=\dot q(T)$ 自动满足（无 DC 分量）；$q(0)=q(T)$ 同样成立（零均值速度的积分为周期函数）。
+
+**为何手推而非 `cs.gradient`**：$q(t;Z)$ 本就是 $\sin/\cos$ 的闭式和，其导数和积分是初等函数，已知无需再微分。若用 `cs.gradient(q, t)` 在 MX 图上再构造自动微分图，会 (1) 冗余放大表达式图、(2) 重新推导平凡已知量、(3) 使 `.map("openmp")` 的输入 $q,v,a$ 不再是 $Z$ 的紧凑显式表达式。手写闭式让 $Q,V,A$ 成为 $Z$ 的三个紧凑 MX 表达式，直接喂入 `W_fun.map`。
+
+> 时间向量 $t=\texttt{linspace}(0,T,N)$，其中 $T=2\pi/\omega$。$\omega$ 由 `fourier_frequency` 显式指定，或默认 $\omega = 2\pi / T_{\text{traj}}$（$T_{\text{traj}} = t_s \times (n_{\text{wps}}-1)$，符合 spec § configurable-sampling）。
 
 ### 1.4 全关节散布
 
@@ -145,9 +157,9 @@ solver = cs.nlpsol("fourier_opt", "ipopt", nlp, opts)
 
 初始化 `_initialize_coefficients`：
 
-- $a_{0,j}=$ 关节范围中点；
-- $a_{k,j},b_{k,j}\sim\mathcal{U}(-\text{amp},\text{amp})$，$\text{amp}=5\%\cdot(\overline q_j-\underline q_j)$，种子 `default_rng(42)`；
-- 可行性：在 $t=\texttt{linspace}(0,2\pi,100)$ 上检查位置/速度越限，若违规则将 $a_k,b_k$ **减半**重试，最多 5 次。
+- $a_{0,j}=$ 关节范围中点（均值位置）；
+- $a_{k,j},b_{k,j}\sim\mathcal{U}(-\text{amp},\text{amp})$，$\text{amp}=5\%\cdot\overline{\dot q}_j\,/\,N_h$（速度幅值，基于速度极限并按谐波数均摊），种子 `default_rng(42)`；
+- 可行性：在 $t=\texttt{linspace}(0,T,100)$ 上检查位置/速度越限，若违规则将 $a_k,b_k$ **减半**重试，最多 5 次。
 
 ### 1.10 完整 NLP 构造与求解伪代码
 
@@ -166,17 +178,23 @@ function FourierOptimizationStrategy.solve(context):
     # ── 决策变量与参数化 ──
     Z = MX.sym("coeffs", n_vars)
     Z_mat = reshape(Z, n_act, n_coeff)          # 列主序
-    T = 2*pi ; omega = cfg.fourier_frequency or 1.0
+    # omega 默认: fourier_frequency 显式 → 用该值；否则 ω=2π/(t_s*(n_wps-1)) (spec)
+    freq = cfg.fourier_frequency
+    omega = freq if freq is not None else 2*pi/(t_s*(n_wps-1))
+    T = 2*pi/omega
     t = MX(linspace(0, T, N)).T                  # (1, N)
     Q_col = MX.zeros(n_act, N); V_col = ...; A_col = ...
     for j in 0..n_act-1:
-        Q_col[j,:] = Z_mat[j,0]                  # a0
+        Q_col[j,:] = Z_mat[j,0]                  # a0 (均值位置)
         for k in 1..n_h:
-            ak, bk = Z_mat[j, 2k-1], Z_mat[j, 2k]
+            ak, bk = Z_mat[j, 2k-1], Z_mat[j, 2k]  # 速度 sin/cos 幅值
             kw = k*omega
-            Q_col[j,:] += ak*sin(kw*t) + bk*cos(kw*t)
-            V_col[j,:] += ak*kw*cos(kw*t) - bk*kw*sin(kw*t)
-            A_col[j,:] += -ak*kw^2*sin(kw*t) - bk*kw^2*cos(kw*t)
+            # v(t) = ak*sin(kωt) + bk*cos(kωt)
+            V_col[j,:] += ak*sin(kw*t) + bk*cos(kw*t)
+            # q(t) = a0 - ak/(kω)*cos(kωt) + bk/(kω)*sin(kωt)
+            Q_col[j,:] += -ak/kw*cos(kw*t) + bk/kw*sin(kw*t)
+            # a(t) = ak*kω*cos(kωt) - bk*kω*sin(kωt)
+            A_col[j,:] += ak*kw*cos(kw*t) - bk*kw*sin(kw*t)
 
     # ── 全关节散布 ──
     Q_full, V_full, A_full = MX.zeros(nq,N), MX.zeros(nv,N), MX.zeros(nv,N)
@@ -215,7 +233,7 @@ function FourierOptimizationStrategy.solve(context):
     # ── 求解 ──
     nlp = {"x": Z, "f": obj, "g": g}
     solver = nlpsol("fourier_opt", "ipopt", nlp, opts)   # mumps/limited-mem/adaptive mu
-    x0 = _initialize_coefficients(context, n_act, n_h)    # a0=中点, ak/bk=5%范围, 减半重试×5
+    x0 = _initialize_coefficients(context, n_act, n_h, omega, T)  # a0=中点, ak/bk=5%速度限/谐波数, 减半重试×5
     res = solver(x0=x0, lbg=cl, ubg=cu)
 
     # ── 结果提取 ──

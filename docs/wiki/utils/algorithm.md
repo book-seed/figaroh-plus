@@ -102,59 +102,60 @@ $$
 
 ## 2. Fourier 级数参数化（核心）
 
-### 2.1 公式
+### 2.1 公式（速度参数化）
 
-对关节 $j$，周期 $T$，基频 $\omega=2\pi/T$，$N_h$ 阶谐波：
-
-$$
-q_j(t)=a_{0,j}+\sum_{k=1}^{N_h}\big[a_{k,j}\sin(k\omega t)+b_{k,j}\cos(k\omega t)\big].
-$$
-
-### 2.2 解析导数手推
-
-对 $t$ 求一阶导（$a_0$ 为常数，导数为 0；$\frac{d}{dt}\sin(k\omega t)=k\omega\cos(k\omega t)$，$\frac{d}{dt}\cos(k\omega t)=-k\omega\sin(k\omega t)$）：
+对关节 $j$，周期 $T$，基频 $\omega=2\pi/T$，$N_h$ 阶谐波。**速度**为首要参数化对象（避免 $(k\omega)^2$ 加速度放大）：
 
 $$
-v_j(t)=\frac{\partial q_j}{\partial t}=\sum_{k=1}^{N_h}\big[a_{k,j}\,k\omega\,\cos(k\omega t)-b_{k,j}\,k\omega\,\sin(k\omega t)\big].
+\dot q_j(t)=\sum_{k=1}^{N_h}\big[a_{k,j}\sin(k\omega t)+b_{k,j}\cos(k\omega t)\big].
 $$
 
-再求二阶导（$\frac{d}{dt}\cos=-k\omega\sin$，$\frac{d}{dt}(-\sin)=-k\omega\cos$）：
+位置通过解析积分得到（$a_{0,j}$ 为均值位置）：
 
 $$
-a_j(t)=\frac{\partial^2 q_j}{\partial t^2}=\sum_{k=1}^{N_h}\big[-a_{k,j}(k\omega)^2\sin(k\omega t)-b_{k,j}(k\omega)^2\cos(k\omega t)\big].
+q_j(t)=a_{0,j}+\int_0^t \dot q_j(\tau)\,d\tau
+     =a_{0,j}+\sum_{k=1}^{N_h}\Big[-\frac{a_{k,j}}{k\omega}\cos(k\omega t)+\frac{b_{k,j}}{k\omega}\sin(k\omega t)\Big].
 $$
 
-可见每阶导数把 $\sin\leftrightarrow\cos$ 翻转并乘 $(k\omega)^{\text{阶数}}$ 与符号因子，形式规整、可向量化。
+### 2.2 解析加速度
+
+对速度求导得加速度（$a_{0,j}$ 不参与，无 DC 速度分量保证周期性）：
+
+$$
+\ddot q_j(t)=\frac{d}{dt}\dot q_j(t)=\sum_{k=1}^{N_h}\big[a_{k,j}\,k\omega\,\cos(k\omega t)-b_{k,j}\,k\omega\,\sin(k\omega t)\big].
+$$
+
+**相比位置参数化的优势**：加速度幅值 $\propto k\omega$ 而非 $(k\omega)^2$，高频谐波的 IPOPT 梯度贡献更均衡，避免高频分量在优化中"失活"。位置参数化中 $\ddot q$ 含 $(k\omega)^2$ 放大，使高频系数对力矩约束极度敏感。
 
 ### 2.3 系数布局（列主序）
 
 每关节系数数 `n_coeffs_per_joint = 1 + 2·N_h`，按列主序存于 `coeffs[j, :]`：
 
 $$
-\texttt{coeffs[j,0]}=a_0,\quad \texttt{coeffs[j,2k-1]}=a_k,\quad \texttt{coeffs[j,2k]}=b_k,\quad k=1,\dots,N_h.
+\texttt{coeffs[j,0]}=a_0\;\text{(均值位置)},\quad \texttt{coeffs[j,2k-1]}=a_k\;\text{(速度 sin 幅值)},\quad \texttt{coeffs[j,2k]}=b_k\;\text{(速度 cos 幅值)},\quad k=1,\dots,N_h.
 $$
 
 即 $[a_0,\,a_1,b_1,\,a_2,b_2,\,\dots,\,a_{N_h},b_{N_h}]$。`_evaluate` 据此索引取 $a_k=\texttt{coeffs[j,2k-1]}$、$b_k=\texttt{coeffs[j,2k]}$。
 
 ### 2.4 基频 $\omega=2\pi/T$
 
-构造时 $\omega$ 缺省取 $2\pi/T$；若显式传 `omega` 则覆盖。谐波频率为 $k\omega$（$k=1,\dots,N_h$）。
+构造时 $\omega$ 缺省取 $2\pi/T$；若显式传 `omega` 则覆盖。谐波频率为 $k\omega$（$k=1,\dots,N_h$）。**Fourier NLP** 中 $T=2\pi/\omega$（始终覆盖恰好一个周期），$\omega$ 由 `fourier_frequency` 显式指定或默认 $\omega = 2\pi/T_{\text{traj}}$。
 
 ### 2.5 为何解析内联而非 `cs.jacobian`
 
 spec 文本要求 Fourier 轨迹支持 jacobian 求导，但 [fourier_trajectory.py](../../../src/figaroh/utils/fourier_trajectory.py) 的 `_evaluate` **直接内联解析公式**（上式）计算 $q,v,a$，而不在运行时调 `cs.jacobian`。原因：
 
 - 解析公式 $O(N_h)$ 每采样点，比符号自动微分开销低、无 CasADi 运行时依赖；
-- 导数结构已知且规整（§2.2），手写无误风险低。
+- 速度和加速度由速度参数化直接给出（$v$ 即级数本身，$a$ 求导一次），比位置参数化少一次求导，结构更紧凑。
 
 **验证方式**：测试 [test_fourier_trajectory.py](../../../tests/unit/test_fourier_trajectory.py) 用 `cs.jacobian`（对 `build_casadi_expression` 产出的 SX $q$ 求 $\partial q/\partial t$、$\partial^2 q/\partial t^2$）与 numpy `_evaluate` 结果比对，即"实现解析、测试用 jacobian 验证"。
 
-### 2.6 `build_casadi_expression`（仅构造 $q$）
+### 2.6 `build_casadi_expression`（仅构造 $q$，速度参数化）
 
 此方法以**标量** CasADi SX `t_sym` 与系数符号 `coeffs_sym` 构造 $q_j(t)$ 的 SX 表达式，**只构造位置**，不构造 $v,a$：
 
 $$
-q_j^{\text{SX}}(t)=\texttt{coeffs\_sym[j,0]}+\sum_{k=1}^{N_h}\big[\texttt{coeffs\_sym[j,2k-1]}\sin(k\omega t)+\texttt{coeffs\_sym[j,2k]}\cos(k\omega t)\big].
+q_j^{\text{SX}}(t)=\texttt{coeffs\_sym[j,0]}+\sum_{k=1}^{N_h}\Big[-\frac{\texttt{coeffs\_sym[j,2k-1]}}{k\omega}\cos(k\omega t)+\frac{\texttt{coeffs\_sym[j,2k]}}{k\omega}\sin(k\omega t)\Big].
 $$
 
 它**未被** [Fourier NLP 策略](../optimal/algorithm.md) 调用——后者自行向量化构造 q/v/a（对时间向量 `t_vec`），因此 `build_casadi_expression` 仅服务于测试（§2.5 的 jacobian 验证）。
@@ -162,19 +163,22 @@ $$
 ### 2.7 伪代码
 
 ```
-# _evaluate(t, coeffs) -> (q, v, a)
+# _evaluate(t, coeffs) -> (q, v, a)  —— 速度参数化
 function _evaluate(t, coeffs):
-    N = len(t); n_act = coeffs.shape[0]; n_h = N_h
+    N = len(t); n_act = coeffs.shape[0]; n_h = N_h; omega = self._omega
     q = zeros(N, n_act); v = zeros(N, n_act); a = zeros(N, n_act)
     for j in 0..n_act-1:
-        q[:,j] = coeffs[j,0]                 # a0
+        q[:,j] = coeffs[j,0]                       # a0 = 均值位置
         for k in 1..n_h:
-            ak = coeffs[j, 2k-1]; bk = coeffs[j, 2k]
+            ak = coeffs[j, 2k-1]; bk = coeffs[j, 2k]  # 速度 sin/cos 幅值
             kw = k * omega
             s = sin(kw * t); c = cos(kw * t)
-            q[:,j] += ak*s + bk*c
-            v[:,j] += ak*kw*c - bk*kw*s
-            a[:,j] += -ak*kw*kw*s - bk*kw*kw*c
+            # v(t) = ak*sin(kωt) + bk*cos(kωt)
+            v[:,j] += ak*s + bk*c
+            # q(t) = a0 - ak/(kω)*cos(kωt) + bk/(kω)*sin(kωt)
+            q[:,j] += -ak/kw*c + bk/kw*s
+            # a(t) = ak*kω*cos(kωt) - bk*kω*sin(kωt)
+            a[:,j] += ak*kw*c - bk*kw*s
     return q, v, a
 ```
 
@@ -184,11 +188,12 @@ function build_casadi_expression(t_sym, coeffs_sym, omega):
     n_act = coeffs_sym.shape[0]; w = omega or self.omega
     q_expr = cs.SX.zeros(n_act, 1)
     for j in 0..n_act-1:
-        q_j = coeffs_sym[j,0]                 # a0
+        q_j = coeffs_sym[j,0]                       # a0 = 均值位置
         for k in 1..N_h:
-            ak = coeffs_sym[j, 2k-1]; bk = coeffs_sym[j, 2k]
+            ak = coeffs_sym[j, 2k-1]; bk = coeffs_sym[j, 2k]  # 速度 sin/cos 幅值
             kw = k * w
-            q_j += ak*cs.sin(kw*t_sym) + bk*cs.cos(kw*t_sym)
+            # q = a0 - ak/(kω)*cos + bk/(kω)*sin
+            q_j += -ak/kw*cs.cos(kw*t_sym) + bk/kw*cs.sin(kw*t_sym)
         q_expr[j] = q_j
     return q_expr
 ```

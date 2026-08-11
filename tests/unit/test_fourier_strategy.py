@@ -40,8 +40,6 @@ class TestFourierStrategyInitialization:
             "fourier_frequency": None,
             "n_samples": 200,
             "reg_lambda": 1.0e-6,
-            "tanh_alpha_opt": 10,
-            "tanh_alpha_id": 100,
         }
         strategy = FourierOptimizationStrategy(fourier_config=config)
         assert strategy._fourier_config["n_harmonics"] == 5
@@ -61,11 +59,9 @@ class TestFourierStrategySolveFlow:
 
         strategy = FourierOptimizationStrategy(fourier_config={
             "n_harmonics": 3,
-            "fourier_frequency": None,
+            "fourier_frequency": 1.0,
             "n_samples": 50,
             "reg_lambda": 1.0e-6,
-            "tanh_alpha_opt": 10,
-            "tanh_alpha_id": 100,
         })
 
         # Build a minimal mock context
@@ -113,12 +109,18 @@ class TestFourierStrategySolveFlow:
         mock_backend.rnea_function = cs.Function(
             "rnea", [cs_q, cs_v, cs_a], [tau_expr]
         )
+        mock_backend.nq = 1
+        mock_backend.nv = 1
         mock_backend._cmodel = mock_robot.model
         mock_backend._cdata = MagicMock()
 
         mock_ctx.results = {
-            'T_F': [], 'P_F': [], 'V_F': [], 'A_F': [],
-            'iteration_data': [], 'final_regressor_shape': None,
+            'fourier_coeffs': None,
+            'omega': None,
+            'n_harmonics': None,
+            'iteration_data': [],
+            'final_regressor_shape': None,
+            'diagnostics': None,
         }
         mock_ctx.robot = mock_robot
 
@@ -126,15 +128,27 @@ class TestFourierStrategySolveFlow:
         # Previously this was wrapped in `try/except Exception: pass`, which
         # swallowed the AttributeError from the non-existent cs.cholesky call
         # and made the test falsely green while solve() actually crashed.
+        #
+        # _initialize_coefficients calls FourierTrajectory.compute_torques
+        # internally; the mock robot doesn't have a real Pinocchio model,
+        # so we stub it out.
+        def _mock_compute_torques(self, q, v, a, robot):
+            return np.zeros((q.shape[0], robot.model.nv))
+
         with patch(
             "figaroh.backend.casadi.CasadiBackend",
             return_value=mock_backend,
+        ), patch(
+            "figaroh.utils.fourier_trajectory.FourierTrajectory.compute_torques",
+            _mock_compute_torques,
         ):
             strategy.solve(mock_ctx)
 
-        # solve() must have populated trajectory results (no swallowed crash)
-        assert len(mock_ctx.results['T_F']) > 0
-        assert len(mock_ctx.results['P_F']) > 0
+        # solve() must have populated Fourier coefficients and diagnostics
+        assert mock_ctx.results['fourier_coeffs'] is not None
+        assert mock_ctx.results['omega'] is not None
+        assert mock_ctx.results['n_harmonics'] is not None
+        assert mock_ctx.results['diagnostics'] is not None
 
 
 class TestDOptimalObjective:
@@ -193,49 +207,6 @@ class TestDOptimalObjective:
         strategy = FourierOptimizationStrategy()
         # Verify the strategy has the required config
         assert "reg_lambda" in strategy._fourier_config
-
-
-class TestFrictionModelDifferentiability:
-    """Test tanh(alpha*v) friction model is CasADi differentiable."""
-
-    def test_tanh_friction_gradient(self):
-        """tanh(alpha*v) yields non-zero gradient via CasADi AD."""
-        import casadi as cs
-        import numpy as np
-
-        v = cs.SX.sym("v")
-        alpha = 10.0
-        f_s = 1.0
-        f_expr = f_s * cs.tanh(alpha * v)
-
-        grad_fn = cs.Function("grad", [v], [cs.gradient(f_expr, v)])
-        grad_val = float(grad_fn(0.5))
-
-        # Analytical: d/dv (tanh(alpha*v)) = alpha * sech^2(alpha*v)
-        # At v=0.5, alpha=10: 10 * sech^2(5) > 0
-        assert grad_val > 0
-        assert np.isfinite(grad_val)
-
-    def test_tanh_friction_high_alpha(self):
-        """tanh(100*v) approximates sign(v) but remains differentiable."""
-        import casadi as cs
-        import numpy as np
-
-        v = cs.SX.sym("v")
-        alpha_id = 100.0
-        f_expr = cs.tanh(alpha_id * v)
-
-        fn = cs.Function("f", [v], [f_expr])
-        grad_fn = cs.Function("grad", [v], [cs.gradient(f_expr, v)])
-
-        # Near zero, tanh is steep but differentiable
-        v_small = 0.01
-        f_val = float(fn(v_small))
-        grad_val = float(grad_fn(v_small))
-
-        assert f_val > 0.5  # close to 1 (sign(v) approximation)
-        assert grad_val > 0  # still differentiable
-        assert np.isfinite(grad_val)
 
 
 class TestSymbolicJacobian:

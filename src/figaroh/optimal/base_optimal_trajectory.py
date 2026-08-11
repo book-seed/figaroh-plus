@@ -53,13 +53,13 @@ from figaroh.optimal.strategies import create_strategy
 class BaseOptimalTrajectory:
     """
     Base class for IPOPT-based optimal trajectory generation.
-    
+
     Features:
     - Modular design with separated concerns
     - Better error handling and logging
     - Configuration validation
     - Cleaner interfaces
-    
+
     This base class can be extended for specific robots by implementing
     robot-specific configuration loading and constraint handling.
     """
@@ -80,7 +80,7 @@ class BaseOptimalTrajectory:
 
         # Load configuration
         self.trajectory_config, self.identif_config = load_param(self.robot, config_file)
-        
+
         self.active_joints = self.identif_config["active_joints"]
 
         # ── Strategy pattern ──────────────────────────────────────────
@@ -93,14 +93,26 @@ class BaseOptimalTrajectory:
             self.strategy = create_strategy(traj_type, fourier_config=fourier_cfg)
         else:
             self.strategy = create_strategy(traj_type)
-            
+
         self.logger.info("Trajectory optimization strategy: %s", self.strategy.name())
 
-        # Results storage
-        self.results = {
-            'T_F': [], 'P_F': [], 'V_F': [], 'A_F': [],
-            'iteration_data': [], 'final_regressor_shape': None
-        }
+        # Results storage — format depends on trajectory type.
+        # Fourier stores coefficients (analytic form); spline stores
+        # sampled points.
+        _common = {'iteration_data': [], 'final_regressor_shape': None,
+                   'diagnostics': None}
+        if traj_type == "fourier":
+            self.results = {
+                'fourier_coeffs': None,
+                'omega': None,
+                'n_harmonics': None,
+                **_common,
+            }
+        else:
+            self.results = {
+                'T_F': [], 'P_F': [], 'V_F': [], 'A_F': [],
+                **_common,
+            }
 
     def initialize(self):
         """Initialize trajectory generation components."""
@@ -119,6 +131,61 @@ class BaseOptimalTrajectory:
         self.idx_e, self.idx_b = self.base_computer.compute_base_indices()
 
         self.logger.info(f"BaseOptimalTrajectory initialized with {len(self.idx_b)} base parameters")
+
+    @staticmethod
+    def _compute_regressor_diagnostics(W_b: np.ndarray, n_samples: int) -> dict:
+        """Compute condition number and FIM eigenvalue spectrum from W_b.
+
+        Performs column normalization before computing the condition
+        number so the result is invariant to physical-unit choices
+        (e.g. kg·m² vs g·cm²).
+
+        Args:
+            W_b: Base regressor matrix, shape ``(N_s * nv, n_base)``.
+            n_samples: Number of time samples (*N_s*), used for
+                       per-sample FIM normalisation.
+
+        Returns:
+            Dict with keys ``condition_number`` (float),
+            ``d_optimal_objective`` (float), and ``fim_eigenvalues``
+            (dict with ``min``, ``max``, ``ratio``, ``spectrum``).
+        """
+        n_base = W_b.shape[1]
+
+        # Column normalization — makes condition number invariant to
+        # physical-unit choices (mass in kg vs g, inertia in kg·m² vs
+        # g·cm²).  See docs/wiki/algorithms/条件数与D-最优激励轨迹.md §5.1.
+        col_norms = np.linalg.norm(W_b, axis=0)
+        col_norms[col_norms < 1e-12] = 1.0  # guard against zero columns
+        W_tilde = W_b / col_norms[np.newaxis, :]
+
+        # Condition number of the normalised regressor
+        kappa = float(np.linalg.cond(W_tilde))
+
+        # Per-sample Fisher Information Matrix and eigenvalue spectrum
+        FIM = (W_tilde.T @ W_tilde) / n_samples
+        FIM = 0.5 * (FIM + FIM.T)  # enforce symmetry for eigvalsh
+        eigvals = np.linalg.eigvalsh(FIM)
+        lambda_min = float(eigvals[0])
+        lambda_max = float(eigvals[-1])
+        ratio = float(lambda_max / lambda_min) if lambda_min > 1e-14 else np.inf
+
+        # D-optimal logdet on the regularised FIM (mirrors NLP)
+        reg = 1e-6  # same value as _FOURIER_DEFAULTS["reg_lambda"]
+        FIM_reg = FIM + reg * np.eye(n_base)
+        sign, logdet = np.linalg.slogdet(FIM_reg)
+        d_opt = float(-logdet) if sign > 0 else float(np.inf)
+
+        return {
+            "condition_number": kappa,
+            "d_optimal_objective": d_opt,
+            "fim_eigenvalues": {
+                "min": lambda_min,
+                "max": lambda_max,
+                "ratio": ratio,
+                "spectrum": eigvals.tolist(),
+            },
+        }
 
     def solve(self, stack_reps: int = 2) -> Dict[str, Any]:
         """Solve the optimal trajectory generation problem.
@@ -141,15 +208,50 @@ class BaseOptimalTrajectory:
         try:
             self.strategy.solve(self)
 
-            self.logger.info(
-                "Completed! Generated %d trajectory segments",
-                len(self.results['T_F']),
-            )
+            if self._has_results():
+                traj_type = self.trajectory_config.get("trajectory_type", "spline")
+                if traj_type == "fourier":
+                    self.logger.info(
+                        "Completed! Fourier trajectory optimization finished"
+                    )
+                else:
+                    self.logger.info(
+                        "Completed! Generated %d trajectory segments",
+                        len(self.results['T_F']),
+                    )
             return self.results
 
         except Exception as e:
             self.logger.error(f"Error in solve: {e}")
             raise
+
+    def _has_results(self) -> bool:
+        """Return True when the results dict contains valid trajectory data."""
+        traj_type = self.trajectory_config.get("trajectory_type", "spline")
+        if traj_type == "fourier":
+            return self.results.get("fourier_coeffs") is not None
+        return len(self.results.get("T_F", [])) > 0
+
+    @staticmethod
+    def _synthesize_fourier_samples(
+        coeffs, omega: float, n_harmonics: int, n_plot: int = 500
+    ):
+        """Evaluate Fourier trajectory at *n_plot* time points.
+
+        Returns ``(t_list, q_list, v_list, a_list)`` where each is a
+        single-element list-of-ndarray compatible with the format expected
+        by ``ResultsManager.plot_optimal_trajectory_results``.
+        """
+        from figaroh.utils.fourier_trajectory import FourierTrajectory
+
+        T = 2 * np.pi / omega
+        n_act = coeffs.shape[0]
+        ft = FourierTrajectory(n_harmonics=n_harmonics, n_act=n_act, omega=omega)
+        t_vec = np.linspace(0, T, n_plot)
+        q = ft.get_trajectory(t_vec, coeffs)
+        v = ft.get_velocity(t_vec, coeffs)
+        a = ft.get_acceleration(t_vec, coeffs)
+        return [t_vec.reshape(-1, 1)], [q], [v], [a]
 
     def objective_function(self, X, opt_cb, tps, vel_wps, acc_wps, wp_init, W_stack=None):
         """Objective function: condition number of base regressor matrix."""
@@ -195,7 +297,7 @@ class BaseOptimalTrajectory:
         raise NotImplementedError(
             "Subclasses must implement create_ipopt_problem"
         )
-	
+
     def _stack_base_regressors(self, q, v, a, W_stack=None) -> np.ndarray:
         """Build base regressor matrix."""
         try:
@@ -235,7 +337,7 @@ class BaseOptimalTrajectory:
         # n_wps = self.trajectory_config["n_wps"]
         # n_act = len(self.WP.act_idxq)
         # # 将wp_init(初始位置路点)在时间维度上复制n_wps次，形成一个(n_act, n_wps)形状的矩阵
-        # wps_uniform = np.tile(wp_init, (n_wps, 1)).T  
+        # wps_uniform = np.tile(wp_init, (n_wps, 1)).T
         # # 为除了第一个路点之外的所有路点添加一个小的随机扰动（ ±0.05 rad ）。
         # # 这样做的目的是避免生成完全静止的轨迹（零速度），因为零速度可能导致回
         # # 归矩阵退化（条件数趋于无穷大），从而使参数辨识变得困难。
@@ -243,12 +345,12 @@ class BaseOptimalTrajectory:
         # threshold = np.zeros(len(self.WP.act_idxq))
         # for idx in range(len(self.WP.act_idxq)):
         #     threshold[idx] = (self.WP.upper_q[idx] - self.WP.lower_q[idx]) / 2 * 0.2
-        #     threshold[idx] = threshold[idx] if threshold[idx] < 0.25 else 0.25        
-        
+        #     threshold[idx] = threshold[idx] if threshold[idx] < 0.25 else 0.25
+
         # rng = np.random.default_rng(1)
         # wps_uniform[:, 1:] += rng.uniform(-threshold, threshold, (n_act, n_wps - 1))
         # # 速度和加速度路点初始化为零，表示这是一个接近静态的轨迹
-        # vel_uniform = np.zeros((n_act, n_wps))         
+        # vel_uniform = np.zeros((n_act, n_wps))
         # acc_uniform = np.zeros_like(vel_uniform)
         # # 生成时间点序列，每个路点之间的时间间隔由 self.trajectory_config["t_s"] 决定
         # tps = np.matrix(
@@ -264,7 +366,7 @@ class BaseOptimalTrajectory:
         # )
         # tau_i = calc_torque(p_i.shape[0], self.robot, p_i, v_i, a_i)
         # tau_i = np.reshape(tau_i, (v_i.shape[1], v_i.shape[0])).transpose()
-        
+
         # TODO: 后续添加路径的自碰撞检测 check_self_collision
         # is_constr_violated = self.WP.check_cfg_constraints(p_i, v_i, tau_i)
 
@@ -275,7 +377,7 @@ class BaseOptimalTrajectory:
         # ── Strategy 2: random search ──────────────────────────
         self.logger.info("Uniform guess infeasible; trying random search "
             "(max %d attempts)...", max_attempts,)
-        
+
         while is_constr_violated and count < max_attempts:
             count += 1
             self.logger.info("Attempt %d/%d to find feasible initial trajectory...", count, max_attempts,)
@@ -314,7 +416,7 @@ class BaseOptimalTrajectory:
         #     self.logger.info(f"Found feasible initial trajectory after {count} attempts")
 
         return wps, vel_wps, acc_wps, tps, t_i, p_i, v_i, a_i
-		
+
     def _solve_segment(self, s_rep, wp_init, vel_wp_init, acc_wp_init, W_stack) -> bool:
         """Solve a single trajectory segment."""
         try:
@@ -435,19 +537,78 @@ class BaseOptimalTrajectory:
         with open(pkl_path, 'rb') as f:
             saved = pickle.load(f)
 
-        converted = {
-            'T_F': [np.array(t) for t in saved.get('time_segments', [])],
-            'P_F': [np.array(p) for p in saved.get('position_segments', [])],
-            'V_F': [np.array(v) for v in saved.get('velocity_segments', [])],
-            'A_F': [np.array(a) for a in saved.get('acceleration_segments', [])],
-            'iteration_data': [],
-            'final_regressor_shape': None,
-        }
+        # Detect format version for backward-compat
+        fmt_ver = saved.get('format_version', 1)
+
+        # ── New Fourier format (coefficient-based) ────────────────
+        if "fourier_coeffs" in saved:
+            coeffs = np.array(saved["fourier_coeffs"])
+            omega = float(saved["omega"])
+            n_harmonics = int(saved["n_harmonics"])
+            t_list, q_list, v_list, a_list = (
+                BaseOptimalTrajectory._synthesize_fourier_samples(
+                    coeffs, omega, n_harmonics
+                )
+            )
+            converted = {
+                'T_F': t_list,
+                'P_F': q_list,
+                'V_F': v_list,
+                'A_F': a_list,
+                'fourier_coeffs': coeffs,
+                'omega': omega,
+                'n_harmonics': n_harmonics,
+                'iteration_data': [],
+                'final_regressor_shape': None,
+                'diagnostics': None,
+            }
+
+            if fmt_ver < 2:
+                converted['d_optimal_objective'] = saved.get(
+                    'condition_number'
+                )
+                converted['condition_number'] = None
+                converted['fim_eigenvalues'] = None
+            else:
+                converted['condition_number'] = saved.get(
+                    'condition_number'
+                )
+                converted['d_optimal_objective'] = saved.get(
+                    'd_optimal_objective'
+                )
+                converted['fim_eigenvalues'] = saved.get(
+                    'fim_eigenvalues'
+                )
+        else:
+            # ── Legacy / spline format (sampled points) ────────────
+            converted = {
+                'T_F': [np.array(t) for t in saved.get('time_segments', [])],
+                'P_F': [np.array(p) for p in saved.get('position_segments', [])],
+                'V_F': [np.array(v) for v in saved.get('velocity_segments', [])],
+                'A_F': [np.array(a) for a in saved.get('acceleration_segments', [])],
+                'iteration_data': [],
+                'final_regressor_shape': None,
+                'diagnostics': None,
+            }
+
+            if fmt_ver < 2:
+                converted['condition_number'] = saved.get('condition_number')
+                converted['d_optimal_objective'] = saved.get(
+                    'condition_number'
+                )
+                converted['fim_eigenvalues'] = None
+            else:
+                converted['condition_number'] = saved.get('condition_number')
+                converted['d_optimal_objective'] = saved.get(
+                    'd_optimal_objective'
+                )
+                converted['fim_eigenvalues'] = saved.get('fim_eigenvalues')
 
         # Carry over metadata fields that are already serialisable
-        for key in ('condition_number', 'joint_names', 'condition_number_history',
-                     'trajectory_segments'):
-            if key in saved:
+        for key in ('joint_names', 'trajectory_segments',
+                    'condition_number_history', 'd_optimal_history',
+                    'format_version'):
+            if key in saved and key not in converted:
                 converted[key] = saved[key]
 
         return converted
@@ -459,6 +620,9 @@ class BaseOptimalTrajectory:
         *output_dir* (or from *pkl_path* when given explicitly).  Falls
         back to the in-memory ``self.results`` only when no .pkl file is
         available.
+
+        For Fourier trajectories the analytic coefficients are converted
+        to sampled trajectories on the fly before plotting.
         """
         # ── Resolve data source ───────────────────────────────────
         if pkl_path is not None:
@@ -476,6 +640,21 @@ class BaseOptimalTrajectory:
                 output_dir,
             )
             trajectories = self.results
+
+        # ── Normalise to sampled-trajectory format ────────────────
+        # Fourier stores coefficients; synthesise samples for plotting.
+        if "fourier_coeffs" in trajectories and trajectories["fourier_coeffs"] is not None:
+            coeffs = trajectories["fourier_coeffs"]
+            omega = trajectories["omega"]
+            n_harmonics = trajectories["n_harmonics"]
+            t_list, q_list, v_list, a_list = self._synthesize_fourier_samples(
+                coeffs, omega, n_harmonics
+            )
+            trajectories = dict(trajectories)  # shallow copy
+            trajectories["T_F"] = t_list
+            trajectories["P_F"] = q_list
+            trajectories["V_F"] = v_list
+            trajectories["A_F"] = a_list
 
         if not trajectories.get('T_F'):
             self.logger.warning("No trajectory data to plot")
@@ -506,7 +685,7 @@ class BaseOptimalTrajectory:
 
     def save_results(self, output_dir="results"):
         """Save optimal trajectory results using unified results manager."""
-        if not self.results['T_F']:
+        if not self._has_results():
             self.logger.warning("No trajectory data to save")
             return
 
@@ -528,21 +707,45 @@ class BaseOptimalTrajectory:
                             continue
                     cond_history_per_segment.append(row)
 
-            # TODO: 序列化的时候configuration会出错，所以注释掉了，后面看会不会用到
-            results_dict = {
-                'trajectory_segments': len(self.results['T_F']),
-                'condition_number': (cond_history_per_segment[-1][-1]),
-                'joint_names': [f"Joint {i+1}" for i in range(len(self.identif_config["act_Jid"]))],
-                # 'configuration': self.identif_config,  
-                'time_segments': [t.tolist() for t in self.results['T_F']],
-                'position_segments': [p.tolist() for p in self.results['P_F']],
-                'velocity_segments': [v.tolist() for v in self.results['V_F']],
-                'acceleration_segments': [a.tolist() for a in self.results['A_F']],
-                'condition_number_history': cond_history_per_segment
-            }
+            diag = self.results.get('diagnostics') or {}
+            fim = diag.get('fim_eigenvalues') or {}
+
+            traj_type = self.trajectory_config.get("trajectory_type", "spline")
+
+            if traj_type == "fourier":
+                results_dict = {
+                    'format_version': 2,
+                    'trajectory_type': 'fourier',
+                    'trajectory_segments': 1,
+                    # ── Diagnostic fields ──
+                    'condition_number': diag.get('condition_number'),
+                    'd_optimal_objective': diag.get('d_optimal_objective'),
+                    'fim_eigenvalues': fim,
+                    # ── Fourier-specific ──
+                    'joint_names': [f"Joint {i+1}" for i in range(len(self.identif_config["act_Jid"]))],
+                    'fourier_coeffs': self.results['fourier_coeffs'].tolist(),
+                    'omega': float(self.results['omega']),
+                    'n_harmonics': int(self.results['n_harmonics']),
+                    # ── Optimization history ──
+                    'd_optimal_history': cond_history_per_segment,
+                }
+            else:
+                results_dict = {
+                    'format_version': 2,
+                    'trajectory_segments': len(self.results['T_F']),
+                    'condition_number': diag.get('condition_number'),
+                    'd_optimal_objective': diag.get('d_optimal_objective'),
+                    'fim_eigenvalues': fim,
+                    'joint_names': [f"Joint {i+1}" for i in range(len(self.identif_config["act_Jid"]))],
+                    # 'configuration': self.identif_config,
+                    'time_segments': [t.tolist() for t in self.results['T_F']],
+                    'position_segments': [p.tolist() for p in self.results['P_F']],
+                    'velocity_segments': [v.tolist() for v in self.results['V_F']],
+                    'acceleration_segments': [a.tolist() for a in self.results['A_F']],
+                    'condition_number_history': cond_history_per_segment,
+                }
 
             # Include trajectory type in filename prefix
-            traj_type = self.trajectory_config.get("trajectory_type", "spline")
             timestamp = __import__("datetime").datetime.now().strftime("%Y%m%d_%H%M%S")
             file_prefix = f"{robot_name}_optimal_trajectory_{traj_type}_{timestamp}"
             saved_files = results_manager.save_results(
@@ -551,7 +754,7 @@ class BaseOptimalTrajectory:
             )
             self.logger.info(f"Trajectory results saved successfully")
             return saved_files
-        
+
         except Exception as e:
             self.logger.error(f"Error saving results: {e}")
             raise
@@ -559,15 +762,15 @@ class BaseOptimalTrajectory:
 class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
     """
     Base IPOPT problem formulation for trajectory optimization.
-    
+
     This class provides a base implementation for trajectory optimization
     that can be extended for specific robots.
     """
-    
-    def __init__(self, opt_traj, n_joints, n_wps, Ns, tps, vel_wps, acc_wps, 
+
+    def __init__(self, opt_traj, n_joints, n_wps, Ns, tps, vel_wps, acc_wps,
                  wp_init, vel_wp_init, acc_wp_init, W_stack, problem_name="TrajectoryOptimization"):
         super().__init__(problem_name)
-        
+
         self.opt_traj = opt_traj
         self.n_joints = n_joints
         self.n_wps = n_wps
@@ -579,18 +782,18 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
         self.vel_wp_init = vel_wp_init
         self.acc_wp_init = acc_wp_init
         self.W_stack = W_stack
-        
+
         # Storage for optimization callback (inherits callback_data from base)
         self.opt_cb = {"t_f": None, "p_f": None, "v_f": None, "a_f": None}
-    
+
     def get_variable_bounds(self) -> Tuple[List[float], List[float]]:
         """Get variable bounds for optimization."""
         return self.opt_traj.constraint_manager.get_variable_bounds()
-    
+
     def get_constraint_bounds(self) -> Tuple[List[float], List[float]]:
         """Get constraint bounds for optimization."""
         return self.opt_traj.constraint_manager.get_constraint_bounds(self.Ns)
-    
+
     def get_initial_guess(self) -> List[float]:
         """Get initial guess from waypoints."""
         # This will be set when solve() is called with waypoints
@@ -599,23 +802,23 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             return [0.0] * (self.n_joints * (self.n_wps - 1))
         X0 = self._initial_wps[:, range(1, self.n_wps)]
         return np.reshape(X0.transpose(), (self.n_joints * (self.n_wps - 1),)).tolist()
-    
+
     def objective(self, X: np.ndarray) -> float:
         """Objective function: condition number of base regressor matrix."""
         return self.opt_traj.objective_function(
-            X, self.opt_cb, self.tps, self.vel_wps, self.acc_wps, 
+            X, self.opt_cb, self.tps, self.vel_wps, self.acc_wps,
             self.wp_init, self.W_stack
         )
-    
+
     def constraints(self, X: np.ndarray) -> np.ndarray:
         """Constraint function for IPOPT."""
         return self.opt_traj.constraint_manager.evaluate_constraints(
             self.Ns, X, self.tps, self.vel_wps, self.acc_wps, self.wp_init)
-    
+
     def jacobian(self, X: np.ndarray) -> np.ndarray:
         """
         Jacobian of constraints - Custom implementation for better performance.
-        
+
         For trajectory optimization, we can use sparse finite differences
         instead of full automatic differentiation which is too slow.
         """
@@ -624,21 +827,21 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             c0 = self.constraints(X)
             n_constraints = len(c0)
             n_vars = len(X)
-            
+
             # Use finite differences with smaller step size for efficiency
             eps = 1e-6
             jac = np.zeros((n_constraints, n_vars))
-            
+
             # Compute Jacobian column by column (forward differences)
             for i in range(n_vars):
                 X_plus = X.copy()
                 X_plus[i] += eps
                 c_plus = self.constraints(X_plus)
                 jac[:, i] = (c_plus - c0) / eps
-            
+
             self.logger.debug(f"Constraint jacobian shape: {jac.shape}")
             return jac
-            
+
         except Exception as e:
             self.logger.warning(f"Error computing jacobian: {e}")
             # Return sparse identity matrix as fallback
@@ -649,7 +852,7 @@ class BaseTrajectoryIPOPTProblem(BaseOptimizationProblem):
             min_dim = min(n_constraints, n_vars)
             jac[:min_dim, :min_dim] = np.eye(min_dim)
             return jac
-    
+
     def solve_with_waypoints(self, wps) -> Tuple[bool, Dict[str, Any]]:
         """
         Solve the optimization problem with given initial waypoints.

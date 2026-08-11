@@ -43,7 +43,7 @@ solve() → strategy.solve(self):
   CasadiBackend(robot)              # 策略内部自建，唯一消费者
   Z = MX.sym("coeffs", n_vars)      # 决策变量 = Fourier 系数
   reshape(Z, n_act, 1+2N_h)         # 列主序 → a0 / ak / bk
-  Q,V,A = 解析 sin/cos 导数          # v=∂q/∂t, a=∂²q/∂t² (闭式, 非 cs.gradient)
+  Q,V,A = 速度参数化解析积分/求导   # q=∫v dt, a=dv/dt (闭式, 非 cs.gradient)
   scatter → Q_full/V_full/A_full    # 全关节 (nq,nv × Ns)
   W_fun.map(Ns,"openmp") → W_full   # (Ns·nv, n_param)  [SX 内层, MX 穿透]
   W_b = W_full[:, idx_b]
@@ -76,7 +76,7 @@ solve() → strategy.solve(context):
 - **backend 已 sink 进 fourier 策略**：`CasadiBackend` 由 `FourierOptimizationStrategy.solve` 内部 `CasadiBackend(robot=context.robot)` 构造，`BaseOptimalTrajectory` 无 `backend=` 参数；样条策略不持有 backend。
 - **`load_param` 的 `@staticmethod` 残留**：[config.py](../../../src/figaroh/optimal/config.py) 的 `load_param` 是**模块级函数**却挂 `@staticmethod`（其上是空类 `ConfigurationManager`）。装饰器在模块级无效果，可安全移除。
 - **`BaseOptimalTrajectory` 非 ABC 但用 `@abstractmethod`**：类声明 `class BaseOptimalTrajectory:`（无 `ABC`/`ABCMeta`），却给 `create_ipopt_problem` 标 `@abstractmethod`——无 metaclass 时该装饰器**不阻止实例化**，子类未实现也只在该方法 `raise NotImplementedError`。标定侧 `BaseOptimalCalibration(ABC)` 才是真 ABC。
-- **`omega` 默认 1.0 ≠ spec**：`fourier_frequency=None` 时 `omega=1.0`、周期 `T=2π`；spec 期望 $\omega=2\pi/T_{\text{traj}}$（由期望轨迹周期决定）。当前默认与真实周期解耦。
+- **`omega` 默认推导**：`fourier_frequency=None` 时 $\omega = 2\pi / T_{\text{traj}}$（$T_{\text{traj}} = t_s \times (n_{\text{wps}}-1)$），符合 spec § configurable-sampling；$T = 2\pi/\omega$ 始终覆盖恰好一个完整周期。
 - **`build_symbolic_constraints` 未接线**：`TrajectoryConstraintManager.build_symbolic_constraints`（SX 约束表达式）存在但 Fourier 策略**未调用**——Fourier 在 MX 图内自建 `cons_list`；样条路径走数值 `evaluate_constraints`。同样 `FourierTrajectory.build_casadi_expression` 也未被策略调用（策略内联手写 MX 表达式）。
 - **`stack_reps` 仅样条**：`BaseOptimalTrajectory.solve(stack_reps=2)` 签名有该参数但**未透传**给 `strategy.solve`；样条策略改从 `trajectory_config["stack_reps"]` 读取，Fourier 不分段（单条轨迹）。
 - **CasADi reshape 列主序**：`cs.reshape(Z, n_act, n_coeffs)` 按列主序填充，而 `_initialize_coefficients` 与结果提取 `x_opt.reshape(...)` 用 numpy 行主序——同一扁平向量索引语义不一致，存储轨迹的系数排列与 NLP 内部不同。

@@ -54,7 +54,7 @@
 
 ### 3.3 `FourierTrajectory`
 
-- `FourierTrajectory(n_harmonics, n_act, omega?, T=2π)`：`omega` 缺省取 `2π/T`；`n_coeffs_per_joint = 1 + 2·n_harmonics`。
+- `FourierTrajectory(n_harmonics, n_act, omega?, T=2π)`：`omega` 缺省取 `2π/T`；`n_coeffs_per_joint = 1 + 2·n_harmonics`。速度参数化：$a_0$ 为均值位置，$a_k,b_k$ 为速度谐波幅值。
 - `_evaluate(t, coeffs) -> (q, v, a)`：**解析内联**计算位置/速度/加速度（见 [algorithm](algorithm.md) §2）。
 - `build_casadi_expression(t_sym, coeffs_sym, omega?)`：构造 CasADi **SX 位置表达式** `q(t)`（标量时间），仅测试使用。
 - `compute_torques` / `check_constraints`：直接循环 `pinocchio.rnea`，限值取自 `robot.model`。
@@ -110,8 +110,8 @@ coeffs / waypoints + t  ──▶  BaseTrajectory.get_{trajectory,velocity,accel
                 ▼                                           ▼
           CubicSpline                               FourierTrajectory
    (ndcurves exact_cubic +                   (解析 sin/cos 级数：
-    curve_constraints, piecewise 组装)        q=a0+Σ a_k sin+b_k cos;
-   pc(t) / pc.derivate(t,1|2)                v,a 解析导数内联)
+    curve_constraints, piecewise 组装)        v=Σ a_k sin+b_k cos;
+   pc(t) / pc.derivate(t,1|2)                q=∫v dt, a=dv/dt 解析内联)
                 │                                           │
                 └─────────────────────┬─────────────────────┘
                                       ▼

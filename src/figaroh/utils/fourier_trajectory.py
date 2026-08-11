@@ -14,41 +14,39 @@
 
 """Fourier series trajectory generation."""
 
-from typing import Optional
 import numpy as np
-
 from .base_trajectory import BaseTrajectory
 
 
 class FourierTrajectory(BaseTrajectory):
-    """Fourier series parameterized trajectory.
+    """Fourier series parameterized trajectory (velocity parameterization).
 
-    Generates smooth periodic trajectories as sums of harmonic sinusoids:
+    Velocity is parameterized as a truncated Fourier series, and position is obtained by analytical integration.  
+    This avoids the (kω)² amplification of acceleration that plagues direct position parameterization, yielding 
+    better numerical conditioning for high-harmonic trajectories.
 
-        q_j(t) = a0_j + Σ_{k=1}^{N} [ a_k_j * sin(k*ω*t) + b_k_j * cos(k*ω*t) ]
+    v_j(t) = Σ_{k=1}^{N} [ a_k_j * sin(k*ω*t) + b_k_j * cos(k*ω*t) ]
 
-    where ω = 2π/T is the fundamental frequency.
+    q_j(t) = a0_j + Σ_{k=1}^{N} [ -a_k_j/(kω) * cos(k*ω*t) + b_k_j/(kω) * sin(k*ω*t) ]
+
+    a_j(t) = Σ_{k=1}^{N} [ a_k_j * kω * cos(k*ω*t) - b_k_j * kω * sin(k*ω*t) ]
+
+    where ω = 2π/T is the fundamental frequency, a0_j is the mean position,
+    and DC velocity is constrained to zero for periodicity.
 
     Args:
         n_harmonics: Number of harmonic terms (N).
         n_act: Number of active joints.
-        omega: Fundamental frequency (rad/s). If None, computed as 2π/T.
-        T: Period (s). Default 2π.
+        omega: Fundamental frequency (rad/s). Default 1.0.
     """
 
-    def __init__(
-        self,
-        n_harmonics: int = 5,
-        n_act: int = 0,
-        omega: Optional[float] = None,
-        T: float = 2 * np.pi,
-    ):
+    def __init__( self, n_harmonics: int = 5, n_act: int = 0, omega: float = 1.0, T: float | None = None):
         self._n_harmonics = n_harmonics
         self._n_act = n_act
-        self._T = T
-        self._omega = omega if omega is not None else 2 * np.pi / T
+        self._omega = omega
+        self._T = T if T is not None else 2 * np.pi
 
-    @property
+    @property 
     def n_harmonics(self) -> int:
         return self._n_harmonics
 
@@ -66,9 +64,14 @@ class FourierTrajectory(BaseTrajectory):
     def _evaluate(self, t: np.ndarray, coeffs: np.ndarray) -> tuple:
         """Evaluate position, velocity, acceleration at time points.
 
+        Velocity parameterization: coeffs encode velocity harmonics. Position 
+        is obtained by analytical integration; acceleration by differentiation.
+
         Args:
             t: Time points, shape (N,).
             coeffs: Fourier coefficients, shape (n_act, 2*n_harmonics + 1).
+                    Column 0: a0 (mean position).
+                    Columns 2k-1, 2k: ak, bk (velocity sin/cos amplitudes).
 
         Returns:
             Tuple (q, v, a) each shape (N, n_act).
@@ -76,31 +79,30 @@ class FourierTrajectory(BaseTrajectory):
         N = len(t)
         n_act = coeffs.shape[0]
         n_h = self._n_harmonics
+        omega = self._omega
 
         q = np.zeros((N, n_act))
         v = np.zeros((N, n_act))
         a = np.zeros((N, n_act))
 
         for j in range(n_act):
-            a0 = coeffs[j, 0]
-            q[:, j] = a0
-            v[:, j] = 0.0
-            a[:, j] = 0.0
+            mean_pos = coeffs[j, 0]
+            q[:, j] = mean_pos
 
             for k in range(1, n_h + 1):
-                ak = coeffs[j, 2 * k - 1]
-                bk = coeffs[j, 2 * k]
-                k_omega = k * self._omega
+                ak = coeffs[j, 2 * k - 1]  # velocity sin amplitude
+                bk = coeffs[j, 2 * k]      # velocity cos amplitude
+                k_omega = k * omega
 
                 sin_kwt = np.sin(k_omega * t)
                 cos_kwt = np.cos(k_omega * t)
 
-                # q = ak*sin(kωt) + bk*cos(kωt)
-                q[:, j] += ak * sin_kwt + bk * cos_kwt
-                # v = ak*kω*cos(kωt) - bk*kω*sin(kωt)
-                v[:, j] += ak * k_omega * cos_kwt - bk * k_omega * sin_kwt
-                # a = -ak*(kω)^2*sin(kωt) - bk*(kω)^2*cos(kωt)
-                a[:, j] += -ak * k_omega**2 * sin_kwt - bk * k_omega**2 * cos_kwt
+                # v(t) = ak*sin(kωt) + bk*cos(kωt)
+                v[:, j] += ak * sin_kwt + bk * cos_kwt
+                # q(t) = mean_pos + ∫v dt = mean_pos - ak/(kω)*cos + bk/(kω)*sin
+                q[:, j] += -ak / k_omega * cos_kwt + bk / k_omega * sin_kwt
+                # a(t) = dv/dt = ak*kω*cos - bk*kω*sin
+                a[:, j] += ak * k_omega * cos_kwt - bk * k_omega * sin_kwt
 
         return q, v, a
 
@@ -116,9 +118,7 @@ class FourierTrajectory(BaseTrajectory):
         _, _, a = self._evaluate(t, coeffs)
         return a
 
-    def compute_torques(
-        self, q: np.ndarray, v: np.ndarray, a: np.ndarray, robot
-    ) -> np.ndarray:
+    def compute_torques(self, q: np.ndarray, v: np.ndarray, a: np.ndarray, robot) -> np.ndarray:
         """Compute joint torques via pinocchio rnea."""
         import pinocchio
 
@@ -126,62 +126,107 @@ class FourierTrajectory(BaseTrajectory):
         nv = robot.model.nv
         tau = np.zeros((N, nv))
         for i in range(N):
-            tau[i, :] = pinocchio.rnea(
-                robot.model, robot.data, q[i, :], v[i, :], a[i, :]
-            )
+            tau[i, :] = pinocchio.rnea(robot.model, robot.data, q[i, :], v[i, :], a[i, :])
         return tau
 
     def check_constraints(
-        self, q: np.ndarray, v: np.ndarray, tau: np.ndarray, robot
+        self,
+        q: np.ndarray,
+        v: np.ndarray,
+        tau: np.ndarray | None = None,
+        robot=None,
+        act_idxq: list | None = None,
+        act_idxv: list | None = None,
     ) -> bool:
-        """Check if trajectory violates joint position/velocity/effort limits."""
+        """Check if trajectory violates joint position/velocity/effort limits.
+
+        Args:
+            q: Position trajectory, shape (N, n_act).
+            v: Velocity trajectory, shape (N, n_act).
+            tau: Joint torques, shape (N, n_act) or None to skip torque check.
+            robot: RobotWrapper instance with ``model`` attribute.
+            act_idxq: Active joint indices for position limits.  When None
+                (default), uses ``range(q.shape[1])`` — correct only when
+                active joints are [0, 1, …, n_act-1].
+            act_idxv: Active joint indices for velocity/effort limits.  When
+                None (default), uses ``range(v.shape[1])`` with the same
+                contingency as ``act_idxq``.
+
+        Returns:
+            True if any constraint is violated.
+        """
         model = robot.model
+        idxq = act_idxq if act_idxq is not None else list(range(q.shape[1]))
+        idxv = act_idxv if act_idxv is not None else list(range(v.shape[1]))
+
+        q_upper = np.array([float(model.upperPositionLimit[j]) for j in idxq])
+        q_lower = np.array([float(model.lowerPositionLimit[j]) for j in idxq])
+        v_limit = np.array([float(model.velocityLimit[j]) for j in idxv])
+
         violated = False
 
         for i in range(q.shape[0]):
-            for j in range(q.shape[1]):
-                if q[i, j] > model.upperPositionLimit[j] or \
-                   q[i, j] < model.lowerPositionLimit[j]:
+            for col, _ in enumerate(idxq):
+                if q[i, col] > q_upper[col] or q[i, col] < q_lower[col]:
                     violated = True
 
         for i in range(v.shape[0]):
-            for j in range(v.shape[1]):
-                if abs(v[i, j]) > model.velocityLimit[j]:
+            for col, _ in enumerate(idxv):
+                if abs(v[i, col]) > v_limit[col]:
                     violated = True
 
-        for i in range(tau.shape[0]):
-            for j in range(tau.shape[1]):
-                if abs(tau[i, j]) > model.effortLimit[j]:
-                    violated = True
+        if tau is not None:
+            tau_limit = np.array([float(model.effortLimit[j]) for j in idxv])
+            for i in range(tau.shape[0]):
+                for col, _ in enumerate(idxv):
+                    if abs(tau[i, col]) > tau_limit[col]:
+                        violated = True
 
         return violated
 
-    # ── CasADi SX expression (for symbolic NLP) ───────────────────
+    # ── CasADi MX expression (for symbolic NLP) ───────────────────
 
-    def build_casadi_expression(self, t_sym, coeffs_sym, omega=None):
-        """Build CasADi SX expression for q(t, coeffs).
+    def build_mx_trajectory(self, t_vec, coeffs_mat):
+        """Build CasADi MX expressions for q(t), v(t), a(t) at all time points.
+
+        Velocity-parameterized Fourier series evaluated symbolically for use
+        in optimization NLP construction.
 
         Args:
-            t_sym: CasADi SX symbol for time (scalar).
-            coeffs_sym: CasADi SX symbol for coefficients, shape (n_act, 2*n_harmonics+1).
-            omega: Fundamental frequency (optional, uses self._omega if None).
+            t_vec: CasADi MX expression for time, shape (1, Ns).
+            coeffs_mat: CasADi MX symbol for coefficients,
+                        shape (n_act, 2*n_harmonics+1).
+                        Column 0: a0 (mean position).
+                        Columns 2k-1, 2k: ak, bk (velocity sin/cos amplitudes).
 
         Returns:
-            CasADi SX expression for q(t, coeffs), shape (n_act, 1).
+            Tuple (Q, V, A) each shape (n_act, Ns) as CasADi MX expressions.
         """
         import casadi as cs
 
-        n_act = coeffs_sym.shape[0]
-        n_h = self._n_harmonics
-        omega_val = omega if omega is not None else self._omega
+        n_act = coeffs_mat.shape[0]
+        Ns = t_vec.shape[1]
 
-        q_expr = cs.SX.zeros(n_act, 1)
+        Q = cs.MX.zeros(n_act, Ns)
+        V = cs.MX.zeros(n_act, Ns)
+        A = cs.MX.zeros(n_act, Ns)
+
         for j in range(n_act):
-            q_j = coeffs_sym[j, 0]  # a0
-            for k in range(1, n_h + 1):
-                ak = coeffs_sym[j, 2 * k - 1]
-                bk = coeffs_sym[j, 2 * k]
-                k_omega = k * omega_val
-                q_j += ak * cs.sin(k_omega * t_sym) + bk * cs.cos(k_omega * t_sym)
-            q_expr[j] = q_j
-        return q_expr
+            a0 = coeffs_mat[j, 0]  # mean position
+            Q[j, :] = a0
+            for k in range(1, self._n_harmonics + 1):
+                ak = coeffs_mat[j, 2 * k - 1]  # velocity sin amplitude
+                bk = coeffs_mat[j, 2 * k]      # velocity cos amplitude
+                k_omega = k * self._omega
+
+                sin_kwt = cs.sin(k_omega * t_vec)
+                cos_kwt = cs.cos(k_omega * t_vec)
+
+                # v(t) = ak*sin(kωt) + bk*cos(kωt)
+                V[j, :] += ak * sin_kwt + bk * cos_kwt
+                # q(t) = a0 - ak/(kω)*cos + bk/(kω)*sin
+                Q[j, :] += -ak / k_omega * cos_kwt + bk / k_omega * sin_kwt
+                # a(t) = ak*kω*cos - bk*kω*sin
+                A[j, :] += ak * k_omega * cos_kwt - bk * k_omega * sin_kwt
+
+        return Q, V, A

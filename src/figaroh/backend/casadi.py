@@ -132,13 +132,20 @@ class CasadiBackend:
         self._W_fun = None  # cs.Function: (q, v, a) -> W
         self._rnea_fun = None  # cs.Function: (q, v, a) -> tau
 
-    def _ensure_symbolic_model(self):
-        """Build the CasADi symbolic model.
+    def ensure_initialized(self):
+        """Ensure the symbolic model and SX Functions are built (idempotent).
 
-        Constructs ``pinocchio.casadi`` symbolic model and data structures,
-        then builds the regressor and RNEA CasADi SX Functions.  Idempotent:
-        subsequent calls return immediately.
+        Safe to call multiple times; subsequent calls are near-zero-cost
+        (a single ``is None`` guard).
+
+        Callers that access multiple backend properties in sequence may
+        call this once upfront for clarity, but it is never required —
+        every property internally calls the same guard.
         """
+        self._ensure_symbolic_model()
+
+    def _ensure_symbolic_model(self):
+        """Build the CasADi symbolic model (internal, idempotent)."""
         if self._cmodel is not None:
             return
 
@@ -151,6 +158,7 @@ class CasadiBackend:
         cs_v = cs.SX.sym("v", self._cmodel.nv)
         cs_a = cs.SX.sym("a", self._cmodel.nv)
 
+        # ur(6,60) → (nv, n_param) regressor for joint torques
         W_expr = cpin.computeJointTorqueRegressor(
             self._cmodel, self._cdata, cs_q, cs_v, cs_a
         )
@@ -176,3 +184,15 @@ class CasadiBackend:
         """
         self._ensure_symbolic_model()
         return self._rnea_fun
+
+    @property 
+    def nq(self) -> int:
+        """Configuration-space dimension (lazy, triggers model build)."""
+        self._ensure_symbolic_model()
+        return self._cmodel.nq
+
+    @property
+    def nv(self) -> int:
+        """Velocity-space dimension (lazy, triggers model build)."""
+        self._ensure_symbolic_model()
+        return self._cmodel.nv

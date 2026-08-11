@@ -37,8 +37,6 @@ _FOURIER_DEFAULTS = {
     "fourier_frequency": None,
     "n_samples": 200,
     "reg_lambda": 1.0e-6,
-    "tanh_alpha_opt": 10,
-    "tanh_alpha_id": 100,
 }
 
 

@@ -45,10 +45,8 @@ def _make_config():
         "fourier_config": {
             "n_harmonics": 1,
             "n_samples": 10,
-            "fourier_frequency": None,
+            "fourier_frequency": 1.0,
             "reg_lambda": 1e-3,
-            "tanh_alpha_opt": 10,
-            "tanh_alpha_id": 100,
         },
     }
 
@@ -108,13 +106,26 @@ class TestFourierPipeline:
         traj.initialize()
         traj.solve()
 
-        assert len(traj.results["T_F"]) > 0
-        assert len(traj.results["P_F"]) > 0
+        assert traj.results["fourier_coeffs"] is not None
+        assert traj.results["omega"] is not None
+        assert traj.results["n_harmonics"] is not None
 
+        # Verify diagnostics are populated
+        diag = traj.results["diagnostics"]
+        assert diag is not None
+        assert diag["condition_number"] > 0
+        assert np.isfinite(diag["condition_number"])
+        assert len(diag["fim_eigenvalues"]["spectrum"]) > 0
+
+        # Synthesize trajectory samples from coefficients for regressor build
+        coeffs = traj.results["fourier_coeffs"]
+        omega = traj.results["omega"]
+        n_harmonics = traj.results["n_harmonics"]
+        t_list, q_list, v_list, a_list = traj._synthesize_fourier_samples(
+            coeffs, omega, n_harmonics, n_plot=200
+        )
         W_b = traj._stack_base_regressors(
-            traj.results["P_F"][0],
-            traj.results["V_F"][0],
-            traj.results["A_F"][0],
+            q_list[0], v_list[0], a_list[0],
         )
         cond = float(np.linalg.cond(W_b))
         assert cond > 0 and np.isfinite(cond)

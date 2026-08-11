@@ -25,8 +25,6 @@ class TestFourierConfigParsing:
         assert fourier["fourier_frequency"] is None
         assert fourier["n_samples"] == 200
         assert fourier["reg_lambda"] == 1.0e-6
-        assert fourier["tanh_alpha_opt"] == 10
-        assert fourier["tanh_alpha_id"] == 100
 
     def test_explicit_fourier_config(self):
         """Fourier fields override defaults when provided."""
@@ -39,8 +37,6 @@ class TestFourierConfigParsing:
                     "fourier_frequency": 1.5,
                     "n_samples": 500,
                     "reg_lambda": 1.0e-8,
-                    "tanh_alpha_opt": 20,
-                    "tanh_alpha_id": 200,
                 },
             },
             "constraints": {},
@@ -53,8 +49,6 @@ class TestFourierConfigParsing:
         assert fourier["fourier_frequency"] == 1.5
         assert fourier["n_samples"] == 500
         assert fourier["reg_lambda"] == 1.0e-8
-        assert fourier["tanh_alpha_opt"] == 20
-        assert fourier["tanh_alpha_id"] == 200
 
     def test_invalid_trajectory_type(self):
         """Invalid trajectory_type raises ValueError."""
@@ -151,8 +145,6 @@ class TestConfigStrategyIntegration:
         assert strategy._fourier_config["n_harmonics"] == 5
         assert strategy._fourier_config["n_samples"] == 200
         assert strategy._fourier_config["reg_lambda"] == 1.0e-6
-        assert strategy._fourier_config["tanh_alpha_opt"] == 10
-        assert strategy._fourier_config["tanh_alpha_id"] == 100
 
     def test_create_strategy_with_custom_config(self):
         """Custom fourier config propagates through create_strategy."""
@@ -168,8 +160,6 @@ class TestConfigStrategyIntegration:
                     "n_harmonics": 8,
                     "n_samples": 100,
                     "reg_lambda": 1.0e-8,
-                    "tanh_alpha_opt": 20,
-                    "tanh_alpha_id": 200,
                 },
             },
             "constraints": {},
@@ -185,8 +175,6 @@ class TestConfigStrategyIntegration:
         assert strategy._fourier_config["n_harmonics"] == 8
         assert strategy._fourier_config["n_samples"] == 100
         assert strategy._fourier_config["reg_lambda"] == 1.0e-8
-        assert strategy._fourier_config["tanh_alpha_opt"] == 20
-        assert strategy._fourier_config["tanh_alpha_id"] == 200
 
     def test_create_strategy_spline_default_config(self):
         """Default spline config creates SplineOptimizationStrategy."""
