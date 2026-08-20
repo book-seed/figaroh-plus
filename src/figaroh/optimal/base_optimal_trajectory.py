@@ -132,15 +132,11 @@ class BaseOptimalTrajectory:
 
         self.logger.info(f"BaseOptimalTrajectory initialized with {len(self.idx_b)} base parameters")
 
-    def solve(self, stack_reps: int = 2) -> Dict[str, Any]:
+    def solve(self) -> Dict[str, Any]:
         """Solve the optimal trajectory generation problem.
 
         Delegates to the active strategy. The strategy is responsible for
         populating self.results with the standard format.
-
-        Args:
-            stack_reps: Number of trajectory segments to stack
-                (only used by spline strategy).
 
         Returns:
             Dict containing trajectories and optimization info.
@@ -631,7 +627,7 @@ class BaseOptimalTrajectory:
     def save_results(self, output_dir="results"):
         """Save optimal trajectory results using unified results manager."""
         if not self._has_results():
-            self.logger.warning("No trajectory data to save")
+            self.logger.error("No trajectory data to save")
             return
 
         try:
@@ -639,18 +635,6 @@ class BaseOptimalTrajectory:
 
             robot_name = getattr(self, 'robot_name', self.robot.model.name)
             results_manager = ResultsManager('optimal_trajectory', robot_name)
-
-            cond_history_per_segment = []
-            for seg in self.results.get('iteration_data', []):
-                if isinstance(seg, dict):
-                    vals = seg.get('obj_values', [])
-                    row = []
-                    for v in vals:
-                        try:
-                            row.append(float(v))
-                        except Exception:
-                            continue
-                    cond_history_per_segment.append(row)
 
             diag = self.results.get('diagnostics') or {}
             fim = diag.get('fim_eigenvalues') or {}
@@ -671,8 +655,6 @@ class BaseOptimalTrajectory:
                     'fourier_coeffs': self.results['fourier_coeffs'].tolist(),
                     'omega': float(self.results['omega']),
                     'n_harmonics': int(self.results['n_harmonics']),
-                    # ── Optimization history ──
-                    'd_optimal_history': cond_history_per_segment,
                 }
             else:
                 results_dict = {
@@ -687,7 +669,6 @@ class BaseOptimalTrajectory:
                     'position_segments': [p.tolist() for p in self.results['P_F']],
                     'velocity_segments': [v.tolist() for v in self.results['V_F']],
                     'acceleration_segments': [a.tolist() for a in self.results['A_F']],
-                    'condition_number_history': cond_history_per_segment,
                 }
 
             # Include trajectory type in filename prefix

@@ -40,11 +40,10 @@ class FourierTrajectory(BaseTrajectory):
         omega: Fundamental frequency (rad/s). Default 1.0.
     """
 
-    def __init__( self, n_harmonics: int = 5, n_act: int = 0, omega: float = 1.0, T: float | None = None):
+    def __init__( self, n_harmonics: int = 5, n_act: int = 0, omega: float = 1.0):
         self._n_harmonics = n_harmonics
         self._n_act = n_act
         self._omega = omega
-        self._T = T if T is not None else 2 * np.pi
 
     @property 
     def n_harmonics(self) -> int:

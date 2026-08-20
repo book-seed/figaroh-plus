@@ -37,16 +37,17 @@ _FOURIER_DEFAULTS = {
 
 
 def _compute_regressor_diagnostics(W_b: np.ndarray, n_samples: int) -> dict:
-    """Compute condition number and FIM eigenvalue spectrum from W_b.
+    """Compute condition number, FIM eigenvalue spectrum, and D-optimality.
 
-    Performs column normalization before computing the condition
-    number so the result is invariant to physical-unit choices
-    (e.g. kg·m² vs g·cm²).
+    All metrics use **raw W_b** — no column normalization.  The user is
+    responsible for consistent SI units (kg, m) so the columns are already
+    unit-invariant.  Every returned number is directly comparable with the
+    NLP objective and the iteration callback.
 
     Args:
         W_b: Base regressor matrix, shape ``(N_s * nv, n_base)``.
-        n_samples: Number of time samples (*N_s*), used for
-                   per-sample FIM normalisation.
+        n_samples: Number of time samples (*N_s*), used for per-sample
+            FIM normalisation.
 
     Returns:
         Dict with keys ``condition_number`` (float),
@@ -55,25 +56,20 @@ def _compute_regressor_diagnostics(W_b: np.ndarray, n_samples: int) -> dict:
     """
     n_base = W_b.shape[1]
 
-    # Column normalization — makes condition number invariant to
-    # physical-unit choices (mass in kg vs g, inertia in kg·m² vs
-    # g·cm²).  See docs/wiki/algorithms/条件数与D-最优激励轨迹.md §5.1.
-    col_norms = np.linalg.norm(W_b, axis=0)
-    col_norms[col_norms < 1e-12] = 1.0  # guard against zero columns
-    W_tilde = W_b / col_norms[np.newaxis, :]
+    # Condition number (raw W_b)
+    kappa = float(np.linalg.cond(W_b))
 
-    # Condition number of the normalised regressor
-    kappa = float(np.linalg.cond(W_tilde))
+    # Per-sample Fisher Information Matrix — computed once, reused below
+    FIM = (W_b.T @ W_b) / n_samples
+    FIM = 0.5 * (FIM + FIM.T)  # enforce symmetry
 
-    # Per-sample Fisher Information Matrix and eigenvalue spectrum
-    FIM = (W_tilde.T @ W_tilde) / n_samples
-    FIM = 0.5 * (FIM + FIM.T)  # enforce symmetry for eigvalsh
+    # FIM eigenvalue spectrum
     eigvals = np.linalg.eigvalsh(FIM)
     lambda_min = float(eigvals[0])
     lambda_max = float(eigvals[-1])
     ratio = float(lambda_max / lambda_min) if lambda_min > 1e-14 else np.inf
 
-    # D-optimal logdet on the regularised FIM (mirrors NLP)
+    # D-optimal logdet on the regularised FIM — matches NLP obj exactly
     reg = 1e-6  # same value as _FOURIER_DEFAULTS["reg_lambda"]
     FIM_reg = FIM + reg * np.eye(n_base)
     sign, logdet = np.linalg.slogdet(FIM_reg)
@@ -89,6 +85,8 @@ def _compute_regressor_diagnostics(W_b: np.ndarray, n_samples: int) -> dict:
             "spectrum": eigvals.tolist(),
         },
     }
+
+
 
 
 class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
@@ -151,7 +149,10 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         # ── 2. MX optimization variables ───────────────────────────
         Z = cs.MX.sym("coeffs", n_vars)
         # Reshape to (n_act, n_coeffs_per_joint) -- column-major layout
-        Z_mat = cs.reshape(Z, n_act, n_coeffs_per_joint)
+        # cs.reshape is column-major; reshape(n_coeffs, n_act).T mimics
+        # NumPy C-order (row-major) so Z_opt.reshape(n_act, n_coeffs)
+        # in step 16 maps coefficient indices identically.
+        Z_mat = cs.reshape(Z, n_coeffs_per_joint, n_act).T
 
         # ── 3. Time vector ─────────────────────────────────────────
         T = 2 * np.pi / omega
@@ -206,12 +207,22 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         W_blocks = cs.horzsplit(W_raw, n_param_total)
         W_full = cs.vertcat(*W_blocks)
 
-        # ── 7. D-optimal objective via Cholesky ────────────────────
+        # ── 7. Build reduced base regressor ────────────────────────
+        # Mirror the Python diagnostic path exactly:
+        #   W_full → remove idx_e columns → W_e → select idx_b → W_b
+        idx_e = context.idx_e
+        if idx_e is not None and len(idx_e) > 0:
+            all_cols = list(range(W_full.shape[1]))
+            keep_cols = [i for i in all_cols if i not in idx_e]
+            W_e = W_full[:, keep_cols]
+        else:
+            W_e = W_full
+
         idx_b = context.idx_b
         if idx_b is not None and len(idx_b) > 0:
-            W_b = W_full[:, list(idx_b)]
+            W_b = W_e[:, list(idx_b)]
         else:
-            W_b = W_full
+            W_b = W_e
 
         # Q1：为什么要计算 J = W_b.T * W_b 呢？
         # 在动力学辨识中，我们通过最小二乘从实测关节力矩 tau 中求解基参数 \theta_b_hat:
@@ -238,6 +249,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         # Tikhonov正则化
         n_base = W_b.shape[1]
         J_reg = J + reg_lambda * cs.DM.eye(n_base)
+
 
         # D-optimal: obj = -log(det(J_reg)) = -2*sum(log(diag(chol(J_reg)))).
         # chol() is DM/SX-only (not MX); wrap the chol-based logdet in an SX
@@ -330,7 +342,101 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         # ── 11. NLP definition ────────────────────────────────────
         nlp = {"x": Z, "f": obj, "g": cons}
 
-        # ── 12. Solver options (MUMPS-optimized) ────────────────────
+        # ── 12. Iteration callback ──────────────────────────────────
+        n_vars_int = int(Z.shape[0])
+        n_cons_int = int(cons.shape[0]) if cons_list else 0
+
+        _logger = self.logger  # capture for use inside callback
+        _cl = np.copy(cl)  # constraint lower bounds
+        _cu = np.copy(cu)  # constraint upper bounds
+        # Python-path objects for condition number (identical to diagnostic)
+        _context = context
+        _ft = ft
+        _n_act = n_act
+        _n_coeffs = n_coeffs_per_joint
+        _T = T
+        _Ns = Ns
+
+        class FourierIterCallback(cs.Callback):
+            def __init__(self, name, n_vars, n_cons, cl, cu):
+                cs.Callback.__init__(self)
+                self.n_vars = n_vars
+                self.n_cons = n_cons
+                self.cl = cl
+                self.cu = cu
+                self.iter_count = 0
+                self.construct(name, {})
+
+            def get_n_in(self):
+                return 6
+
+            def get_n_out(self):
+                return 1
+
+            def get_sparsity_in(self, i):
+                sparsities = [
+                    cs.Sparsity.dense(self.n_vars),  # x
+                    cs.Sparsity.scalar(),             # f
+                    cs.Sparsity.dense(self.n_cons),   # g
+                    cs.Sparsity.dense(self.n_vars),  # lam_x
+                    cs.Sparsity.dense(self.n_cons),   # lam_g
+                    cs.Sparsity.dense(0),             # lam_p
+                ]
+                return sparsities[i]
+
+            def get_sparsity_out(self, i):
+                return cs.Sparsity.scalar()
+
+            def eval(self, arg):
+                self.iter_count += 1
+                x_arr = np.array(arg[0]).flatten()
+                f_val = float(np.array(arg[1]).flatten()[0])
+                if self.n_cons > 0:
+                    g_arr = np.array(arg[2]).flatten()
+                    inf_pr = float(
+                        max(
+                            0.0,
+                            float(np.max(self.cl - g_arr)),
+                            float(np.max(g_arr - self.cu)),
+                        )
+                    )
+                    inf_pr_linf = float(np.max(np.abs(g_arr)))
+                else:
+                    inf_pr = 0.0
+                    inf_pr_linf = 0.0
+                # Condition number via the exact same Python path as
+                # _compute_regressor_diagnostics(), so the numbers
+                # are directly comparable.
+                try:
+                    Z_mat = x_arr.reshape(_n_act, _n_coeffs)
+                    t_np = np.linspace(0, _T, _Ns)
+                    q_np = _ft.get_trajectory(t_np, Z_mat)
+                    v_np = _ft.get_velocity(t_np, Z_mat)
+                    a_np = _ft.get_acceleration(t_np, Z_mat)
+                    W_b_np = _context._stack_base_regressors(q_np, v_np, a_np)
+                    # col_norms = np.linalg.norm(W_b_np, axis=0)
+                    # col_norms[col_norms < 1e-12] = 1.0
+                    # W_tilde = W_b_np / col_norms[np.newaxis, :]
+                    cond_num = float(np.linalg.cond(W_b_np))
+                except Exception:
+                    cond_num = float("nan")
+                _logger.info(
+                    "IPOPT iter %3d: obj=%+.4e inf_pr=%.2e |g|_max=%.2e "
+                    "||x||=%.2e κ=%.2e",
+                    self.iter_count,
+                    f_val,
+                    inf_pr,
+                    inf_pr_linf,
+                    float(np.linalg.norm(x_arr)),
+                    cond_num,
+                )
+                return [0]
+
+        iteration_callback = FourierIterCallback(
+            "fourier_iter_cb", n_vars_int, n_cons_int, _cl, _cu,
+        )
+
+        # ── 13. Solver options (MUMPS-optimized) ────────────────────
         opts = {
             "ipopt.linear_solver": "mumps",
             "ipopt.hessian_approximation": "limited-memory",
@@ -340,32 +446,32 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
             "ipopt.mu_strategy": "adaptive",
             "ipopt.print_level": 3,
             "print_time": False,
+            "iteration_callback": iteration_callback,
         }
 
         solver = cs.nlpsol("fourier_opt", "ipopt", nlp, opts)
 
-        # ── 13. Coefficient initialization ─────────────────────────
+        # ── 14. Coefficient initialization ─────────────────────────
         x0 = self._initialize_coefficients(context, n_act, n_harmonics, omega)
-        self.logger.info("Initial Fourier coefficients: min=%f, max=%f", float(np.min(x0)), float(np.max(x0)))
+        self.logger.info("Initial Fourier coefficients (shape=%s):\n%s", x0.shape, x0)
 
-        # ── 14. Solve ──────────────────────────────────────────────
+        # ── 15. Solve ──────────────────────────────────────────────
         result = solver(x0=x0, lbg=cl, ubg=cu)
 
-        # ── 15. Extract optimal coefficients ──────────────────────
+        # ── 16. Extract optimal coefficients ──────────────────────
         x_opt = np.array(result["x"]).flatten()
         Z_opt = x_opt.reshape(n_act, n_coeffs_per_joint)
+        self.logger.info("Optimal Fourier coefficients (shape=%s):\n%s", Z_opt.shape, Z_opt)
 
-        # ── 16. Evaluate optimal trajectory (NumPy) ────────────────
+        # ── 17. Evaluate optimal trajectory (NumPy) ────────────────
         t_np = np.linspace(0, T, Ns)
         q_opt = ft.get_trajectory(t_np, Z_opt)
         v_opt = ft.get_velocity(t_np, Z_opt)
         a_opt = ft.get_acceleration(t_np, Z_opt)
 
-        # ── 17. Post-optimization diagnostics ────────────────────
+        # ── 18. Post-optimization diagnostics ────────────────────
         W_b_diag = context._stack_base_regressors(q_opt, v_opt, a_opt)
-        diagnostics = _compute_regressor_diagnostics(
-            W_b_diag, n_samples=Ns
-        )
+        diagnostics = _compute_regressor_diagnostics(W_b_diag, n_samples=Ns)
 
         fim = diagnostics["fim_eigenvalues"]
         self.logger.info(
@@ -379,7 +485,7 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
             W_b_diag.shape[1],
         )
 
-        # ── 18. Populate results ───────────────────────────────────
+        # ── 19. Populate results ───────────────────────────────────
         # Store Fourier coefficients as the primary result.  The
         # analytic trajectory can be reconstructed at arbitrary time
         # resolution via FourierTrajectory without storing sampled
@@ -438,10 +544,10 @@ class FourierOptimizationStrategy(TrajectoryOptimizationStrategy):
         for j in range(n_act):
             mid = (q_upper[j] + q_lower[j]) / 2
             x0[j * n_coeffs] = mid
-            # Velocity amplitude: 5% of velocity limit, divided by
+            # Velocity amplitude: 50% of velocity limit, divided by
             # n_harmonics so the sum of all harmonics stays within a
             # reasonable fraction of the velocity limit.
-            amp = 0.05 * v_limit[j] / n_harmonics
+            amp = 0.5 * v_limit[j] / n_harmonics
             for k in range(1, n_harmonics + 1):
                 x0[j * n_coeffs + 2 * k - 1] = rng.uniform(-amp, amp)
                 x0[j * n_coeffs + 2 * k] = rng.uniform(-amp, amp)
